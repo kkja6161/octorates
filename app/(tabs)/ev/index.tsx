@@ -1,0 +1,703 @@
+import { useState, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  TextInput,
+  Alert,
+  ActivityIndicator,
+} from 'react-native';
+import { Stack, useRouter } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { 
+  Zap, 
+  Battery, 
+  Clock, 
+  PoundSterling, 
+  ChevronRight, 
+  Plus,
+  History,
+  Car,
+  BatteryCharging,
+  TrendingDown,
+} from 'lucide-react-native';
+import { useTheme } from '@/providers/ThemeProvider';
+import { useColors } from '@/constants/colors';
+import { useEV } from '@/providers/EVProvider';
+import { ChargingCalculation, ChargingSlot } from '@/types/ev';
+
+export default function EVChargingScreen() {
+  const router = useRouter();
+  const { isDark } = useTheme();
+  const colors = useColors(isDark);
+  const { profiles, calculateCharging, addLogEntry, isLoading } = useEV();
+
+  const [selectedProfileId, setSelectedProfileId] = useState<string>('');
+  const [currentCharge, setCurrentCharge] = useState<string>('');
+  const [targetCharge, setTargetCharge] = useState<string>('80');
+  const [desiredFinishTime, setDesiredFinishTime] = useState<string>('07:00');
+  const [calculation, setCalculation] = useState<ChargingCalculation | null>(null);
+  const [note, setNote] = useState<string>('');
+
+  const selectedProfile = profiles.find(p => p.id === selectedProfileId);
+
+  const handleCalculate = useCallback(() => {
+    if (!selectedProfileId) {
+      Alert.alert('Select Profile', 'Please select an EV or battery profile first.');
+      return;
+    }
+
+    const current = parseFloat(currentCharge);
+    const target = parseFloat(targetCharge);
+
+    if (isNaN(current) || current < 0 || current > 100) {
+      Alert.alert('Invalid Input', 'Current charge must be between 0 and 100%.');
+      return;
+    }
+
+    if (isNaN(target) || target < 0 || target > 100) {
+      Alert.alert('Invalid Input', 'Target charge must be between 0 and 100%.');
+      return;
+    }
+
+    if (target <= current) {
+      Alert.alert('Invalid Input', 'Target charge must be greater than current charge.');
+      return;
+    }
+
+    const result = calculateCharging(selectedProfileId, current, target, desiredFinishTime);
+    setCalculation(result);
+    console.log('[EVScreen] Calculation result:', result);
+  }, [selectedProfileId, currentCharge, targetCharge, desiredFinishTime, calculateCharging]);
+
+  const handleSaveToLog = useCallback(() => {
+    if (!calculation) return;
+
+    const entry = addLogEntry(calculation, note.trim() || undefined);
+    Alert.alert(
+      'Session Saved',
+      'Your charging session has been saved to the log. You can update it with actual values later.',
+      [
+        { text: 'View Log', onPress: () => router.push('/ev/logs') },
+        { text: 'OK' },
+      ]
+    );
+    setCalculation(null);
+    setCurrentCharge('');
+    setNote('');
+    console.log('[EVScreen] Saved log entry:', entry.id);
+  }, [calculation, note, addLogEntry, router]);
+
+  const formatTime = (date: Date) => {
+    return date.toLocaleTimeString('en-GB', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      hour12: false,
+    });
+  };
+
+  const formatDate = (date: Date) => {
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    if (date.toDateString() === today.toDateString()) {
+      return 'Today';
+    } else if (date.toDateString() === tomorrow.toDateString()) {
+      return 'Tomorrow';
+    }
+    return date.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+  };
+
+  const insets = useSafeAreaInsets();
+  const styles = createStyles(colors);
+
+  if (isLoading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
+
+  return (
+    <>
+      <Stack.Screen options={{ headerShown: false }} />
+      
+      <View style={styles.mainContainer}>
+        <LinearGradient
+          colors={[colors.primary, colors.secondary]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[styles.header, { paddingTop: insets.top + 12 }]}
+        >
+          <Text style={styles.headerTitle}>EV Charging</Text>
+        </LinearGradient>
+
+        <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <View style={styles.quickActions}>
+        <TouchableOpacity 
+          style={styles.quickAction}
+          onPress={() => router.push('/ev/profiles')}
+        >
+          <View style={[styles.quickActionIcon, { backgroundColor: colors.primary + '20' }]}>
+            <Car size={20} color={colors.primary} />
+          </View>
+          <Text style={styles.quickActionText}>Profiles</Text>
+          <ChevronRight size={16} color={colors.text.tertiary} />
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={styles.quickAction}
+          onPress={() => router.push('/ev/logs')}
+        >
+          <View style={[styles.quickActionIcon, { backgroundColor: colors.accent + '20' }]}>
+            <History size={20} color={colors.accent} />
+          </View>
+          <Text style={styles.quickActionText}>History</Text>
+          <ChevronRight size={16} color={colors.text.tertiary} />
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Charging Calculator</Text>
+
+        <View style={styles.card}>
+          <Text style={styles.label}>Select Profile</Text>
+          {profiles.length === 0 ? (
+            <TouchableOpacity 
+              style={styles.emptyProfileButton}
+              onPress={() => router.push('/ev/add-profile')}
+            >
+              <Plus size={20} color={colors.primary} />
+              <Text style={styles.emptyProfileText}>Add your first EV or battery</Text>
+            </TouchableOpacity>
+          ) : (
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={false}
+              style={styles.profileScroll}
+            >
+              {profiles.map(profile => (
+                <TouchableOpacity
+                  key={profile.id}
+                  style={[
+                    styles.profileChip,
+                    selectedProfileId === profile.id && styles.profileChipSelected,
+                  ]}
+                  onPress={() => setSelectedProfileId(profile.id)}
+                >
+                  {profile.type === 'ev' ? (
+                    <Car size={16} color={selectedProfileId === profile.id ? '#fff' : colors.text.secondary} />
+                  ) : (
+                    <Battery size={16} color={selectedProfileId === profile.id ? '#fff' : colors.text.secondary} />
+                  )}
+                  <Text style={[
+                    styles.profileChipText,
+                    selectedProfileId === profile.id && styles.profileChipTextSelected,
+                  ]}>
+                    {profile.name}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+              <TouchableOpacity
+                style={styles.addProfileChip}
+                onPress={() => router.push('/ev/add-profile')}
+              >
+                <Plus size={16} color={colors.primary} />
+              </TouchableOpacity>
+            </ScrollView>
+          )}
+
+          {selectedProfile && (
+            <View style={styles.profileInfo}>
+              <Text style={styles.profileInfoText}>
+                {selectedProfile.capacity} kWh capacity • {selectedProfile.maxChargingRate} kW max rate
+              </Text>
+            </View>
+          )}
+
+          <View style={styles.inputRow}>
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Current Charge</Text>
+              <View style={styles.inputWrapper}>
+                <TextInput
+                  style={styles.input}
+                  value={currentCharge}
+                  onChangeText={setCurrentCharge}
+                  keyboardType="numeric"
+                  placeholder="0"
+                  placeholderTextColor={colors.text.tertiary}
+                  maxLength={3}
+                />
+                <Text style={styles.inputSuffix}>%</Text>
+              </View>
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Target Charge</Text>
+              <View style={styles.inputWrapper}>
+                <TextInput
+                  style={styles.input}
+                  value={targetCharge}
+                  onChangeText={setTargetCharge}
+                  keyboardType="numeric"
+                  placeholder="80"
+                  placeholderTextColor={colors.text.tertiary}
+                  maxLength={3}
+                />
+                <Text style={styles.inputSuffix}>%</Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Desired Finish Time</Text>
+            <View style={styles.inputWrapper}>
+              <TextInput
+                style={styles.input}
+                value={desiredFinishTime}
+                onChangeText={setDesiredFinishTime}
+                placeholder="07:00"
+                placeholderTextColor={colors.text.tertiary}
+                maxLength={5}
+              />
+            </View>
+            <Text style={styles.helpText}>24-hour format (e.g., 07:00 or 18:30)</Text>
+          </View>
+
+          <TouchableOpacity 
+            style={[
+              styles.calculateButton,
+              !selectedProfileId && styles.calculateButtonDisabled,
+            ]}
+            onPress={handleCalculate}
+            disabled={!selectedProfileId}
+          >
+            <Zap size={20} color="#fff" />
+            <Text style={styles.calculateButtonText}>Find Best Time</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {calculation && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Recommended Charging</Text>
+
+          <View style={styles.resultCard}>
+            <View style={styles.resultHeader}>
+              <BatteryCharging size={24} color={colors.success} />
+              <View style={styles.resultHeaderText}>
+                <Text style={styles.resultTitle}>Optimal Charging Window</Text>
+                <Text style={styles.resultSubtitle}>
+                  {formatDate(calculation.bestStartTime)} • {calculation.cheapestSlots.length} slots
+                  {calculation.desiredFinishTime && ` • Ready by ${formatTime(calculation.desiredFinishTime)}`}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.resultStats}>
+              <View style={styles.resultStat}>
+                <Clock size={18} color={colors.primary} />
+                <View>
+                  <Text style={styles.resultStatValue}>
+                    {formatTime(calculation.bestStartTime)} - {formatTime(calculation.bestEndTime)}
+                  </Text>
+                  <Text style={styles.resultStatLabel}>Best time to charge</Text>
+                </View>
+              </View>
+
+              <View style={styles.resultStat}>
+                <Zap size={18} color={colors.accent} />
+                <View>
+                  <Text style={styles.resultStatValue}>{calculation.energyNeeded.toFixed(1)} kWh</Text>
+                  <Text style={styles.resultStatLabel}>Energy needed</Text>
+                </View>
+              </View>
+
+              <View style={styles.resultStat}>
+                <PoundSterling size={18} color={colors.success} />
+                <View>
+                  <Text style={styles.resultStatValue}>£{(calculation.estimatedCost / 100).toFixed(2)}</Text>
+                  <Text style={styles.resultStatLabel}>Est. cost</Text>
+                </View>
+              </View>
+
+              <View style={styles.resultStat}>
+                <TrendingDown size={18} color={colors.secondary} />
+                <View>
+                  <Text style={styles.resultStatValue}>{calculation.averageRate.toFixed(2)}p/kWh</Text>
+                  <Text style={styles.resultStatLabel}>Avg rate</Text>
+                </View>
+              </View>
+            </View>
+
+            {calculation.cheapestSlots.length > 0 && (
+              <View style={styles.slotsContainer}>
+                <Text style={styles.slotsTitle}>Charging Slots</Text>
+                {calculation.cheapestSlots.slice(0, 6).map((slot: ChargingSlot, index: number) => (
+                  <View key={index} style={styles.slotRow}>
+                    <Text style={styles.slotTime}>
+                      {formatTime(slot.startTime)} - {formatTime(slot.endTime)}
+                    </Text>
+                    <Text style={styles.slotRate}>{slot.rate.toFixed(1)}p/kWh</Text>
+                    <Text style={styles.slotEnergy}>{slot.energyCharged.toFixed(1)} kWh</Text>
+                  </View>
+                ))}
+                {calculation.cheapestSlots.length > 6 && (
+                  <Text style={styles.moreSlots}>
+                    +{calculation.cheapestSlots.length - 6} more slots
+                  </Text>
+                )}
+              </View>
+            )}
+
+            <View style={styles.noteContainer}>
+              <Text style={styles.label}>Add Note (optional)</Text>
+              <TextInput
+                style={styles.noteInput}
+                value={note}
+                onChangeText={setNote}
+                placeholder="e.g., Weekend trip preparation"
+                placeholderTextColor={colors.text.tertiary}
+                multiline
+              />
+            </View>
+
+            <TouchableOpacity 
+              style={styles.saveButton}
+              onPress={handleSaveToLog}
+            >
+              <History size={20} color="#fff" />
+              <Text style={styles.saveButtonText}>Save to Charging Log</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+          <View style={styles.bottomPadding} />
+        </ScrollView>
+      </View>
+    </>
+  );
+}
+
+const createStyles = (colors: ReturnType<typeof useColors>) => StyleSheet.create({
+  mainContainer: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  header: {
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: '700' as const,
+    color: colors.surface,
+  },
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  content: {
+    padding: 16,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.background,
+  },
+  quickActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 20,
+  },
+  quickAction: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: 14,
+    gap: 10,
+  },
+  quickActionIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  quickActionText: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '500' as const,
+    color: colors.text.primary,
+  },
+  section: {
+    marginBottom: 20,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600' as const,
+    color: colors.text.primary,
+    marginBottom: 12,
+  },
+  card: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    padding: 16,
+  },
+  label: {
+    fontSize: 13,
+    fontWeight: '500' as const,
+    color: colors.text.secondary,
+    marginBottom: 8,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
+  },
+  emptyProfileButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: colors.primary + '10',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.primary + '30',
+    borderStyle: 'dashed',
+    padding: 16,
+    marginBottom: 16,
+  },
+  emptyProfileText: {
+    fontSize: 15,
+    color: colors.primary,
+    fontWeight: '500' as const,
+  },
+  profileScroll: {
+    marginBottom: 12,
+    marginHorizontal: -4,
+  },
+  profileChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.background,
+    borderRadius: 20,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    marginHorizontal: 4,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  profileChipSelected: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  profileChipText: {
+    fontSize: 14,
+    color: colors.text.secondary,
+    fontWeight: '500' as const,
+  },
+  profileChipTextSelected: {
+    color: '#fff',
+  },
+  addProfileChip: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.primary + '15',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginHorizontal: 4,
+  },
+  profileInfo: {
+    backgroundColor: colors.background,
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 16,
+  },
+  profileInfoText: {
+    fontSize: 13,
+    color: colors.text.secondary,
+    textAlign: 'center' as const,
+  },
+  inputRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 12,
+  },
+  inputGroup: {
+    flex: 1,
+  },
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.background,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 14,
+  },
+  input: {
+    flex: 1,
+    fontSize: 24,
+    fontWeight: '600' as const,
+    color: colors.text.primary,
+    paddingVertical: 12,
+  },
+  inputSuffix: {
+    fontSize: 18,
+    color: colors.text.tertiary,
+    fontWeight: '500' as const,
+  },
+  helpText: {
+    fontSize: 12,
+    color: colors.text.tertiary,
+    marginTop: 6,
+  },
+  calculateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    paddingVertical: 14,
+  },
+  calculateButtonDisabled: {
+    backgroundColor: colors.text.tertiary,
+  },
+  calculateButtonText: {
+    fontSize: 16,
+    fontWeight: '600' as const,
+    color: '#fff',
+  },
+  resultCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    padding: 16,
+  },
+  resultHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 16,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  resultHeaderText: {
+    flex: 1,
+  },
+  resultTitle: {
+    fontSize: 17,
+    fontWeight: '600' as const,
+    color: colors.text.primary,
+  },
+  resultSubtitle: {
+    fontSize: 13,
+    color: colors.text.secondary,
+    marginTop: 2,
+  },
+  resultStats: {
+    gap: 14,
+    marginBottom: 16,
+  },
+  resultStat: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  resultStatValue: {
+    fontSize: 16,
+    fontWeight: '600' as const,
+    color: colors.text.primary,
+  },
+  resultStatLabel: {
+    fontSize: 12,
+    color: colors.text.secondary,
+  },
+  slotsContainer: {
+    backgroundColor: colors.background,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+  },
+  slotsTitle: {
+    fontSize: 13,
+    fontWeight: '600' as const,
+    color: colors.text.secondary,
+    marginBottom: 10,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
+  },
+  slotRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  slotTime: {
+    flex: 1,
+    fontSize: 14,
+    color: colors.text.primary,
+    fontWeight: '500' as const,
+  },
+  slotRate: {
+    width: 80,
+    fontSize: 14,
+    color: colors.success,
+    fontWeight: '500' as const,
+    textAlign: 'right' as const,
+  },
+  slotEnergy: {
+    width: 70,
+    fontSize: 14,
+    color: colors.text.secondary,
+    textAlign: 'right' as const,
+  },
+  moreSlots: {
+    fontSize: 13,
+    color: colors.text.tertiary,
+    textAlign: 'center' as const,
+    marginTop: 8,
+  },
+  noteContainer: {
+    marginBottom: 16,
+  },
+  noteInput: {
+    backgroundColor: colors.background,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 12,
+    fontSize: 15,
+    color: colors.text.primary,
+    minHeight: 60,
+    textAlignVertical: 'top' as const,
+  },
+  saveButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: colors.success,
+    borderRadius: 12,
+    paddingVertical: 14,
+  },
+  saveButtonText: {
+    fontSize: 16,
+    fontWeight: '600' as const,
+    color: '#fff',
+  },
+  bottomPadding: {
+    height: 40,
+  },
+});
