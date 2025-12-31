@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { View, Dimensions, StyleSheet } from 'react-native';
+import { View, Dimensions, StyleSheet, Text } from 'react-native';
 import Svg, { Path, Line, Circle, Text as SvgText } from 'react-native-svg';
 import { ProcessedRate } from '@/types/energy';
 
@@ -57,7 +57,6 @@ export const RateLineChart = React.memo(({ rates, type, colors, getRateColor, al
 
     const currentRateIndex = rates.findIndex(r => r.isCurrent);
     
-    // Calculate Next Rate Logic
     let nextRateIndex = -1;
     let nextRateFromTomorrow = false;
     
@@ -70,7 +69,6 @@ export const RateLineChart = React.memo(({ rates, type, colors, getRateColor, al
       }
     }
 
-    // Calculate Next Lowest Rate Logic
     let nextLowestRate = null;
     if (currentRateIndex >= 0) {
       const todayFutureRates = rates.slice(currentRateIndex + 1);
@@ -105,7 +103,6 @@ export const RateLineChart = React.memo(({ rates, type, colors, getRateColor, al
   if (!chartData) return null;
 
   const { pathSegments, minRate, range, currentRateIndex, getX, getY, nextRateIndex, nextRateFromTomorrow, nextLowestRate } = chartData;
-
   const formatPrice = (price: number) => `${price.toFixed(1)}p`;
 
   return (
@@ -121,7 +118,7 @@ export const RateLineChart = React.memo(({ rates, type, colors, getRateColor, al
                 y1={y}
                 x2={padding.left + graphWidth}
                 y2={y}
-                stroke={colors.chartGrid}
+                stroke={colors.chartGrid || '#e1e1e1'}
                 strokeWidth="1"
                 strokeDasharray="5,5"
               />
@@ -129,7 +126,7 @@ export const RateLineChart = React.memo(({ rates, type, colors, getRateColor, al
                 x={0}
                 y={y + 4}
                 fontSize="11"
-                fill={colors.chartAxisLabel}
+                fill={colors.chartAxisLabel || '#888'}
                 fontWeight="500"
               >
                 {price.toFixed(1)}
@@ -163,55 +160,40 @@ export const RateLineChart = React.memo(({ rates, type, colors, getRateColor, al
       </Svg>
 
       <View style={styles.xAxisLabels}>
-        {['00', '06', '12', '18', "23"].map((time, i) => (
-          <SvgText key={i} fill={colors.chartAxisLabel} fontSize="11" fontWeight="500">
-             {/* Note: In standard RN View, we use Text. Using plain Text below for axis labels outside SVG */}
-          </SvgText>
-        ))}
-         {/* Render X Axis Labels with standard Text components for better layout control */}
-         <View style={{flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 40, width: chartWidth}}>
-             {['00', '06', '12', '18', "23"].map((time, i) => (
-               <View key={i}><SvgText fill="transparent">{time}</SvgText></View> // Spacer
-             ))}
-         </View>
-      </View>
-       
-       {/* Re-implementing the X-Axis Labels properly outside SVG */}
-      <View style={styles.xAxisLabels}>
-        {['00', '06', '12', '18', "23"].map((time, i) => (
-          <React.Fragment key={i}>
-             {/* Use Text from react-native, imported by parent usually, but here we use View structure */}
-          </React.Fragment>
+        {['00:00', '06:00', '12:00', '18:00', "23:30"].map((time, i) => (
+          <Text key={i} style={{ color: colors.chartAxisLabel, fontSize: 10, fontWeight: '500' }}>
+            {time}
+          </Text>
         ))}
       </View>
 
       {currentRateIndex >= 0 && (
         <View style={[styles.rateInfoContainer, { borderTopColor: colors.border }]}>
           <View style={styles.rateInfoColumn}>
-            <TextLabel color={colors.text.secondary}>Next Rate</TextLabel>
+            <Text style={[styles.label, { color: colors.text.secondary }]}>Next Rate</Text>
             {nextRateIndex >= 0 ? (
                <>
-                 <TextValue color={colors.text.primary}>
+                 <Text style={[styles.value, { color: colors.text.primary }]}>
                    {formatPrice(nextRateFromTomorrow && allFutureRates ? allFutureRates[nextRateIndex].price : rates[nextRateIndex].price)}
-                 </TextValue>
-                 <TextTime color={colors.text.secondary}>
+                 </Text>
+                 <Text style={[styles.timeLabel, { color: colors.text.secondary }]}>
                    at {nextRateFromTomorrow && allFutureRates ? allFutureRates[nextRateIndex].time : rates[nextRateIndex].time}
-                 </TextTime>
+                 </Text>
                </>
             ) : (
-               <TextValue color={colors.text.primary}>No data</TextValue>
+               <Text style={[styles.value, { color: colors.text.primary }]}>No data</Text>
             )}
           </View>
           
           {nextLowestRate && (
             <View style={[styles.rateInfoColumn, styles.rateInfoColumnRight]}>
-              <TextLabel color={colors.text.secondary}>Next Lowest Rate</TextLabel>
-              <TextValue color={colors.text.primary}>
+              <Text style={[styles.label, { color: colors.text.secondary }]}>Next Lowest</Text>
+              <Text style={[styles.value, { color: colors.text.primary }]}>
                 {formatPrice(nextLowestRate.price)}
-              </TextValue>
-              <TextTime color={colors.text.secondary}>
-                {nextLowestRate.displayTime || nextLowestRate.time}
-              </TextTime>
+              </Text>
+              <Text style={[styles.timeLabel, { color: colors.text.secondary }]}>
+                {nextLowestRate.displayTime}
+              </Text>
             </View>
           )}
         </View>
@@ -220,20 +202,13 @@ export const RateLineChart = React.memo(({ rates, type, colors, getRateColor, al
   );
 });
 
-// Simple local components to avoid import mess in this file
-const TextLabel = ({children, color}: any) => <View><SvgText fill={color} fontSize="13" fontWeight="600">{children}</SvgText></View>; 
-// Note: To keep this file clean and working, we should rely on the styles passed from parent or defined here.
-// But standard RN Text is better for these labels. 
-// Let's rely on standard styling in the main component, but for this specific "Text" inside the chart component:
-
 const styles = StyleSheet.create({
   lineGraphContainer: { marginTop: 8 },
-  xAxisLabels: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 40, marginTop: 8 },
-  rateInfoContainer: { marginTop: 16, paddingTop: 16, borderTopWidth: 1, flexDirection: 'row', justifyContent: 'space-between', gap: 16 },
+  xAxisLabels: { flexDirection: 'row', justifyContent: 'space-between', paddingLeft: 40, paddingRight: 10, marginTop: 4 },
+  rateInfoContainer: { marginTop: 16, paddingTop: 16, borderTopWidth: 1, flexDirection: 'row', justifyContent: 'space-between' },
   rateInfoColumn: { flex: 1 },
   rateInfoColumnRight: { alignItems: 'flex-end' },
+  label: { fontSize: 12, fontWeight: '600', marginBottom: 2 },
+  value: { fontSize: 18, fontWeight: '700' },
+  timeLabel: { fontSize: 12 },
 });
-
-// Since we cannot easily import "Text" inside the component without conflicting with SVG Text, 
-// we will export this component and let the user import Text from react-native in the main file.
-// Ideally, swap the SvgText for standard RN Text for the labels below the chart.

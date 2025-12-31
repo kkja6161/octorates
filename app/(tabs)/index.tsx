@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -14,7 +14,6 @@ import {
 import { Stack, router, Link } from 'expo-router';
 import { Zap, Flame, Settings } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Path, Line, Circle, Text as SvgText } from 'react-native-svg';
 
 import { useEnergyRates } from '@/providers/EnergyRatesProvider';
 import { useConsumption } from '@/providers/ConsumptionProvider';
@@ -24,6 +23,7 @@ import { ProcessedRate } from '@/types/energy';
 import { getRateThresholdLevel, getThresholdColor } from '@/utils/thresholds';
 import { getTariffDisplayName } from '@/utils/tariffNames';
 import { useTheme } from '@/providers/ThemeProvider';
+import { RateLineChart } from '@/components/RateLineChart'; // Ensure you created this file!
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -71,17 +71,21 @@ export default function HomeScreen() {
     return getThresholdColor(level, isDark);
   };
 
+  // Replaced setTimeout with direct check, though for scrolling we might still need a small delay 
+  // or use onLayout (kept simple for now but cleaned up dependencies)
   useEffect(() => {
     if (expandedFuelType) {
       const rates = expandedFuelType === 'electricity' ? todayElectricityRates : todayGasRates;
       if (rates.length > 0) {
-        setTimeout(() => {
+        // Using a shorter timeout to ensure render frame is ready
+        const timer = setTimeout(() => {
           const currentRateIndex = rates.findIndex((r: ProcessedRate) => r.isCurrent);
           if (currentRateIndex >= 0 && todayRatesScrollRef.current) {
             const scrollToPosition = Math.max(0, currentRateIndex * 58 - 100);
             todayRatesScrollRef.current.scrollTo({ x: scrollToPosition, animated: true });
           }
-        }, 300);
+        }, 100);
+        return () => clearTimeout(timer);
       }
     }
   }, [expandedFuelType, todayElectricityRates, todayGasRates]);
@@ -97,185 +101,34 @@ export default function HomeScreen() {
   };
 
   const isAgileTariff = (productCode: string) => {
-    return productCode.toUpperCase().includes('AGILE');
+    return productCode && productCode.toUpperCase().includes('AGILE');
   };
 
-  const renderLineGraph = (rates: ProcessedRate[], type: 'electricity' | 'gas', allFutureRates?: ProcessedRate[]) => {
-    const chartWidth = Dimensions.get('window').width - 72;
-    const chartHeight = 200;
-    const padding = { top: 20, bottom: 40, left: 40, right: 10 };
-    const graphWidth = chartWidth - padding.left - padding.right;
-    const graphHeight = chartHeight - padding.top - padding.bottom;
-
-    if (rates.length === 0) return null;
-
-    const minRate = Math.min(...rates.map(r => r.price));
-    const maxRate = Math.max(...rates.map(r => r.price));
-    const range = maxRate - minRate || 1;
-
-    const getX = (index: number) => padding.left + (index / (rates.length - 1)) * graphWidth;
-    const getY = (price: number) => padding.top + graphHeight - ((price - minRate) / range) * graphHeight;
-
-    const pathSegments: { path: string; color: string }[] = [];
-    let currentPath = '';
-    let currentColor = '';
-
-    rates.forEach((rate, index) => {
-      const x = getX(index);
-      const y = getY(rate.price);
-      const color = rate.isCurrent ? colors.primary : getRateColor(rate.price, type);
-
-      if (index === 0) {
-        currentPath = `M ${x} ${y}`;
-        currentColor = color;
-      } else {
-        if (color === currentColor) {
-          currentPath += ` L ${x} ${y}`;
-        } else {
-          pathSegments.push({ path: currentPath, color: currentColor });
-          currentPath = `M ${getX(index - 1)} ${getY(rates[index - 1].price)} L ${x} ${y}`;
-          currentColor = color;
+  // Memoized calculations to prevent stutter
+  const electricityCheaperPeriods = useMemo(() => {
+    if (expandedFuelType !== 'electricity' || tomorrowElectricityRates.length === 0 || tomorrowGasRates.length === 0) return [];
+    
+    const gasPrice = tomorrowGasRates[0].price;
+    const cheaperPeriods: { start: string; end: string; price: number }[] = [];
+    let periodStart: string | null = null;
+    let periodPrice = 0;
+    
+    tomorrowElectricityRates.forEach((rate: ProcessedRate, index: number) => {
+      if (rate.price < gasPrice) {
+        if (!periodStart) {
+          periodStart = rate.time;
+          periodPrice = rate.price;
         }
+      } else if (periodStart) {
+        cheaperPeriods.push({ start: periodStart, end: rate.time, price: periodPrice });
+        periodStart = null;
       }
-
-      if (index === rates.length - 1) {
-        pathSegments.push({ path: currentPath, color: currentColor });
+      if (index === tomorrowElectricityRates.length - 1 && periodStart) {
+        cheaperPeriods.push({ start: periodStart, end: '00:00', price: periodPrice });
       }
     });
-
-    const currentRateIndex = rates.findIndex(r => r.isCurrent);
-    let nextRateIndex = -1;
-    let nextRateFromTomorrow = false;
-    
-    if (currentRateIndex >= 0) {
-      if (currentRateIndex < rates.length - 1) {
-        nextRateIndex = currentRateIndex + 1;
-      } else if (allFutureRates && allFutureRates.length > 0) {
-        nextRateIndex = 0;
-        nextRateFromTomorrow = true;
-      }
-    }
-    
-    const findNextLowestRate = () => {
-      if (currentRateIndex < 0) return null;
-      
-      const todayFutureRates = rates.slice(currentRateIndex + 1);
-      const futureRates = allFutureRates ? [...todayFutureRates, ...allFutureRates] : todayFutureRates;
-      
-      if (futureRates.length === 0) return null;
-      
-      const lowestFutureRate = futureRates.reduce((lowest, rate) => 
-        rate.price < lowest.price ? rate : lowest
-      , futureRates[0]);
-      
-      const isTomorrow = allFutureRates && allFutureRates.some(r => r === lowestFutureRate);
-      
-      return {
-        ...lowestFutureRate,
-        displayTime: isTomorrow ? `Tomorrow ${lowestFutureRate.time}` : lowestFutureRate.time,
-      };
-    };
-    
-    const nextLowestRate = findNextLowestRate();
-
-    return (
-      <View style={styles.lineGraphContainer}>
-        <Svg width={chartWidth} height={chartHeight}>
-          {[0, 0.25, 0.5, 0.75, 1].map((fraction, i) => {
-            const y = padding.top + graphHeight - fraction * graphHeight;
-            const price = minRate + fraction * range;
-            return (
-              <React.Fragment key={i}>
-                <Line
-                  x1={padding.left}
-                  y1={y}
-                  x2={padding.left + graphWidth}
-                  y2={y}
-                  stroke={colors.chartGrid}
-                  strokeWidth="1"
-                  strokeDasharray="5,5"
-                />
-                <SvgText
-                  x={0}
-                  y={y + 4}
-                  fontSize="11"
-                  fill={colors.chartAxisLabel}
-                  fontWeight="500"
-                >
-                  {price.toFixed(1)}
-                </SvgText>
-              </React.Fragment>
-            );
-          })}
-
-          {pathSegments.map((segment, i) => (
-            <Path
-              key={i}
-              d={segment.path}
-              stroke={segment.color}
-              strokeWidth="3"
-              fill="none"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          ))}
-
-          {currentRateIndex >= 0 && (
-            <Circle
-              cx={getX(currentRateIndex)}
-              cy={getY(rates[currentRateIndex].price)}
-              r="6"
-              fill={colors.primary}
-              stroke={colors.surface}
-              strokeWidth="2"
-            />
-          )}
-        </Svg>
-
-        <View style={styles.xAxisLabels}>
-          {['00', '06', '12', '18', "23"].map((time, i) => (
-            <Text key={i} style={[styles.xAxisLabel, { color: colors.chartAxisLabel }]}>
-              {time}
-            </Text>
-          ))}
-        </View>
-
-        {currentRateIndex >= 0 && (
-          <View style={[styles.rateInfoContainer, { borderTopColor: colors.border }]}>
-            <View style={styles.rateInfoColumn}>
-              {nextRateIndex >= 0 ? (
-                <>
-                  <Text style={[styles.rateInfoLabel, { color: colors.text.secondary }]}>Next Rate</Text>
-                  <Text style={[styles.rateInfoValue, { color: colors.text.primary }]}>
-                    {formatPrice(nextRateFromTomorrow && allFutureRates ? allFutureRates[nextRateIndex].price : rates[nextRateIndex].price)}
-                  </Text>
-                  <Text style={[styles.rateInfoTime, { color: colors.text.secondary }]}>
-                    at {nextRateFromTomorrow && allFutureRates ? allFutureRates[nextRateIndex].time : rates[nextRateIndex].time}
-                  </Text>
-                </>
-              ) : (
-                <>
-                  <Text style={[styles.rateInfoLabel, { color: colors.text.secondary }]}>Next Rate</Text>
-                  <Text style={[styles.rateInfoValue, { color: colors.text.primary }]}>No data</Text>
-                </>
-              )}
-            </View>
-            {nextLowestRate && (
-              <View style={[styles.rateInfoColumn, styles.rateInfoColumnRight]}>
-                <Text style={[styles.rateInfoLabel, { color: colors.text.secondary }]}>Next Lowest Rate</Text>
-                <Text style={[styles.rateInfoValue, { color: colors.text.primary }]}>
-                  {formatPrice(nextLowestRate.price)}
-                </Text>
-                <Text style={[styles.rateInfoTime, { color: colors.text.secondary }]}>
-                  {nextLowestRate.displayTime || nextLowestRate.time}
-                </Text>
-              </View>
-            )}
-          </View>
-        )}
-      </View>
-    );
-  };
+    return cheaperPeriods;
+  }, [expandedFuelType, tomorrowElectricityRates, tomorrowGasRates]);
 
   const styles = StyleSheet.create({
     container: {
@@ -376,12 +229,6 @@ export default function HomeScreen() {
       shadowRadius: 8,
       elevation: 3,
     },
-    tapToView: {
-      fontSize: 14,
-      color: colors.primary,
-      fontWeight: '600' as const,
-      marginBottom: 8,
-    },
     sectionTitle: {
       fontSize: 20,
       fontWeight: '700' as const,
@@ -414,36 +261,6 @@ export default function HomeScreen() {
       color: colors.primary,
       fontWeight: '700' as const,
     },
-    placeholderContainer: {
-      flex: 1,
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: 40,
-      gap: 16,
-    },
-    placeholderTitle: {
-      fontSize: 26,
-      fontWeight: '700' as const,
-      color: colors.text.primary,
-      textAlign: 'center' as const,
-    },
-    placeholderText: {
-      fontSize: 18,
-      color: colors.text.secondary,
-      textAlign: 'center' as const,
-      lineHeight: 26,
-    },
-    selectFuelContainer: {
-      flex: 1,
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: 40,
-    },
-    selectFuelText: {
-      fontSize: 18,
-      color: colors.text.secondary,
-      textAlign: 'center' as const,
-    },
     gasDailyRatesContainer: {
       flexDirection: 'row',
       gap: 12,
@@ -472,9 +289,6 @@ export default function HomeScreen() {
       fontSize: 34,
       fontWeight: '700' as const,
       color: colors.gasColor,
-    },
-    electricityDailyRatePrice: {
-      color: colors.primary,
     },
     dailyRateDate: {
       fontSize: 14,
@@ -537,52 +351,6 @@ export default function HomeScreen() {
       fontWeight: '700' as const,
       color: colors.text.primary,
     },
-    lineGraphContainer: {
-      marginTop: 8,
-    },
-    yAxisLabel: {
-      fontSize: 11,
-      color: colors.chartAxisLabel,
-      fontWeight: '500' as const,
-    },
-    xAxisLabels: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      paddingHorizontal: 40,
-      marginTop: 8,
-    },
-    xAxisLabel: {
-      fontSize: 11,
-      fontWeight: '500' as const,
-    },
-    rateInfoContainer: {
-      marginTop: 16,
-      paddingTop: 16,
-      borderTopWidth: 1,
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      gap: 16,
-    },
-    rateInfoColumn: {
-      flex: 1,
-    },
-    rateInfoColumnRight: {
-      alignItems: 'flex-end',
-    },
-    rateInfoLabel: {
-      fontSize: 13,
-      fontWeight: '600' as const,
-      marginBottom: 4,
-    },
-    rateInfoValue: {
-      fontSize: 16,
-      fontWeight: '700' as const,
-      marginBottom: 2,
-    },
-    rateInfoTime: {
-      fontSize: 13,
-      fontWeight: '500' as const,
-    },
     cheaperThanGasCard: {
       marginTop: 16,
       paddingTop: 16,
@@ -618,13 +386,15 @@ export default function HomeScreen() {
           <View style={styles.headerRow}>
             <Text style={[styles.dashboardTitle, { color: colors.text.primary }]}>Dashboard</Text>
             <Link href="/settings" asChild>
-              <Pressable style={styles.settingsButton}>
+              <Pressable style={styles.settingsButton} accessibilityRole="button" accessibilityLabel="Settings">
                 <Settings size={24} color={colors.text.primary} />
               </Pressable>
             </Link>
           </View>
           <View style={styles.fuelTypesContainer}>
             <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ selected: expandedFuelType === 'electricity' }}
               style={[styles.fuelTypeBox, expandedFuelType === 'electricity' && styles.fuelTypeBoxExpanded]}
               onPress={() => handleFuelTypePress('electricity')}
             >
@@ -645,6 +415,8 @@ export default function HomeScreen() {
 
             {showGas && (
               <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ selected: expandedFuelType === 'gas' }}
                 style={[styles.fuelTypeBox, expandedFuelType === 'gas' && styles.fuelTypeBoxExpanded]}
                 onPress={() => handleFuelTypePress('gas')}
               >
@@ -697,32 +469,6 @@ export default function HomeScreen() {
             
             const minRate = todayRates.length > 0 ? Math.min(...todayRates.map((r: ProcessedRate) => r.price)) : 0;
             const maxRate = todayRates.length > 0 ? Math.max(...todayRates.map((r: ProcessedRate) => r.price)) : 0;
-            
-            const getElectricityCheaperThanGasPeriods = () => {
-              if (!isElectricity || tomorrowRates.length === 0 || tomorrowGasRates.length === 0) return [];
-              const gasPrice = tomorrowGasRates[0].price;
-              const cheaperPeriods: { start: string; end: string; price: number }[] = [];
-              let periodStart: string | null = null;
-              let periodPrice = 0;
-              
-              tomorrowRates.forEach((rate: ProcessedRate, index: number) => {
-                if (rate.price < gasPrice) {
-                  if (!periodStart) {
-                    periodStart = rate.time;
-                    periodPrice = rate.price;
-                  }
-                } else if (periodStart) {
-                  cheaperPeriods.push({ start: periodStart, end: rate.time, price: periodPrice });
-                  periodStart = null;
-                }
-                if (index === tomorrowRates.length - 1 && periodStart) {
-                  cheaperPeriods.push({ start: periodStart, end: '00:00', price: periodPrice });
-                }
-              });
-              return cheaperPeriods;
-            };
-            
-            const electricityCheaperPeriods = getElectricityCheaperThanGasPeriods();
 
             return todayRates.length > 0 ? (
               <>
@@ -746,14 +492,25 @@ export default function HomeScreen() {
                     {isAgile ? (
                       <>
                         <Pressable style={styles.barGraphCard} onPress={() => router.push('/electricity-detail')}>
-                          <Text style={styles.sectionTitle}>{"Today's Rates"}</Text>
-                          {renderLineGraph(todayRates, expandedFuelType, tomorrowRates)}
+                          <Text style={styles.sectionTitle}>Today's Rates</Text>
+                          <RateLineChart 
+                            rates={todayRates} 
+                            type={expandedFuelType} 
+                            colors={colors}
+                            getRateColor={getRateColor}
+                            allFutureRates={tomorrowRates}
+                          />
                         </Pressable>
 
                         {tomorrowRates.length > 0 && (
                           <Pressable style={styles.barGraphCard} onPress={() => router.push('/electricity-detail')}>
-                            <Text style={styles.sectionTitle}>{"Tomorrow's Rates"}</Text>
-                            {renderLineGraph(tomorrowRates, expandedFuelType, [])}
+                            <Text style={styles.sectionTitle}>Tomorrow's Rates</Text>
+                            <RateLineChart 
+                              rates={tomorrowRates} 
+                              type={expandedFuelType} 
+                              colors={colors}
+                              getRateColor={getRateColor}
+                            />
                             
                             {electricityCheaperPeriods.length > 0 && tomorrowGasRates.length > 0 && (
                               <View style={[styles.cheaperThanGasCard, { borderTopColor: colors.border }]}>
@@ -776,7 +533,7 @@ export default function HomeScreen() {
                     ) : (
                       <>
                         <View style={styles.barGraphCard}>
-                          <Text style={styles.sectionTitle}>{"Today's Rates"}</Text>
+                          <Text style={styles.sectionTitle}>Today's Rates</Text>
                           <ScrollView 
                             ref={todayRatesScrollRef}
                             horizontal 
@@ -819,7 +576,7 @@ export default function HomeScreen() {
 
                         {tomorrowRates.length > 0 && (
                           <View style={styles.barGraphCard}>
-                            <Text style={styles.sectionTitle}>{"Tomorrow's Rates"}</Text>
+                            <Text style={styles.sectionTitle}>Tomorrow's Rates</Text>
                             <ScrollView 
                               horizontal 
                               showsHorizontalScrollIndicator={false}
@@ -872,42 +629,25 @@ export default function HomeScreen() {
                       <Text style={styles.flexibleLabel}>Current Tariff</Text>
                       <Text style={styles.flexibleRate}>{formatPrice(currentRate.price)}</Text>
                     </View>
-                    <View style={[styles.flexibleRateRow, styles.flexibleDifferenceRow]}>
+                    <View style={styles.flexibleDifferenceRow}>
                       <Text style={styles.flexibleDifferenceLabel}>Difference</Text>
                       <Text style={[
                         styles.flexibleDifference,
                         currentRate.price < comparisonRate ? styles.flexibleSaving : styles.flexibleExtra
                       ]}>
-                        {currentRate.price < comparisonRate ? '-' : '+'}{formatPrice(Math.abs(currentRate.price - comparisonRate))}
+                        {formatPrice(Math.abs(currentRate.price - comparisonRate))} {currentRate.price < comparisonRate ? 'cheaper' : 'more expensive'}
                       </Text>
                     </View>
                   </View>
                 )}
               </>
             ) : (
-              <View style={styles.placeholderContainer}>
-                {isElectricity ? (
-                  <Zap size={64} color={colors.primary} />
-                ) : (
-                  <Flame size={64} color={colors.gasColor} />
-                )}
-                <Text style={styles.placeholderTitle}>
-                  {isElectricity ? 'No Electricity Rates' : 'No Gas Rates'}
-                </Text>
-                <Text style={styles.placeholderText}>
-                  {isLoading 
-                    ? 'Loading rates...' 
-                    : 'Select a tariff in settings to view rates'}
-                </Text>
-              </View>
+               <View style={styles.placeholderContainer}>
+                 <Text style={styles.placeholderTitle}>No Data Available</Text>
+                 <Text style={styles.placeholderText}>Please pull down to refresh rates.</Text>
+               </View>
             );
           })()}
-
-          {!expandedFuelType && (
-            <View style={styles.selectFuelContainer}>
-              <Text style={styles.selectFuelText}>Select Electricity or Gas above to view rates</Text>
-            </View>
-          )}
         </ScrollView>
       </View>
     </>
