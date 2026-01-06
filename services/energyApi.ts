@@ -886,6 +886,52 @@ export async function fetchBills(
   }
 }
 
+async function obtainKrakenToken(apiKey: string): Promise<string | null> {
+  const url = 'https://api.octopus.energy/v1/graphql/';
+  
+  const mutation = `
+    mutation {
+      obtainKrakenToken(input: {APIKey: "${apiKey}"}) {
+        token
+      }
+    }
+  `;
+  
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ query: mutation }),
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[Energy API] Failed to obtain Kraken token:', response.status, errorText);
+      return null;
+    }
+    
+    const result = await response.json();
+    
+    if (result.errors) {
+      console.error('[Energy API] Kraken token errors:', JSON.stringify(result.errors, null, 2));
+      return null;
+    }
+    
+    const token = result.data?.obtainKrakenToken?.token;
+    if (token) {
+      console.log('[Energy API] Successfully obtained Kraken token');
+      return token;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('[Energy API] Error obtaining Kraken token:', error);
+    return null;
+  }
+}
+
 export async function fetchLastBillDate(
   accountNumber: string,
   apiKey: string
@@ -894,6 +940,13 @@ export async function fetchLastBillDate(
   
   console.log('[Energy API] ========== FETCH LAST BILL DATE (GraphQL) ==========');
   console.log('[Energy API] Account:', accountNumber);
+  
+  // First, obtain a Kraken token
+  const krakenToken = await obtainKrakenToken(apiKey);
+  if (!krakenToken) {
+    console.error('[Energy API] Could not obtain Kraken token');
+    return null;
+  }
   
   // Query to get the last bill's end date
   const query = `
@@ -916,7 +969,7 @@ export async function fetchLastBillDate(
     const response = await fetch(url, {
       method: 'POST',
       headers: {
-        'Authorization': `Basic ${btoa(apiKey + ':')}`,
+        'Authorization': krakenToken,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -928,7 +981,6 @@ export async function fetchLastBillDate(
     if (!response.ok) {
       const errorText = await response.text();
       console.error('[Energy API] Failed to fetch bills via GraphQL:', response.status, errorText);
-      // Fallback or just return null
       return null;
     }
     
