@@ -2,7 +2,7 @@ import createContextHook from '@nkzw/create-context-hook';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 
-import { fetchAccountBalance, fetchConsumption, fetchStandingCharge, fetchEnergyRates, processRates } from '@/services/energyApi';
+import { fetchAccountBalance, fetchConsumption, fetchStandingCharge, fetchEnergyRates, processRates, fetchLastBillDate } from '@/services/energyApi';
 import { EstimatedBilling, ConsumptionEntry, ProcessedRate } from '@/types/energy';
 import { useConsumption } from './ConsumptionProvider';
 
@@ -49,9 +49,26 @@ export const [BillingProvider, useBilling] = createContextHook(() => {
       const currentYear = now.getFullYear();
       
       // Default to 1st of current month for billing period
-      // In a real implementation with full billing access, we would fetch the last bill date
-      const estimatedBillStartDate = new Date(currentYear, currentMonth, 1);
+      // We will try to fetch the last bill date to be more accurate
+      let estimatedBillStartDate = new Date(currentYear, currentMonth, 1);
       const estimatedBillEndDate = new Date(currentYear, currentMonth + 1, 0);
+
+      try {
+        const lastBillDate = await fetchLastBillDate(accountNumber, apiKey);
+        if (lastBillDate) {
+          // Start the new period from the day after the last bill
+          const newStartDate = new Date(lastBillDate);
+          newStartDate.setDate(newStartDate.getDate() + 1);
+          
+          // Ensure the start date is not in the future (unlikely but possible with weird bill dates)
+          if (newStartDate < now) {
+            estimatedBillStartDate = newStartDate;
+            console.log('[Billing] Using last bill date + 1 day as start:', estimatedBillStartDate.toISOString());
+          }
+        }
+      } catch (error) {
+        console.error('[Billing] Failed to fetch last bill date, using default:', error);
+      }
 
       let electricityEstimate = null;
       let gasEstimate = null;

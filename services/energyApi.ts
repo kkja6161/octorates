@@ -885,3 +885,85 @@ export async function fetchBills(
     throw error;
   }
 }
+
+export async function fetchLastBillDate(
+  accountNumber: string,
+  apiKey: string
+): Promise<Date | null> {
+  const url = 'https://api.octopus.energy/v1/graphql/';
+  
+  console.log('[Energy API] ========== FETCH LAST BILL DATE (GraphQL) ==========');
+  console.log('[Energy API] Account:', accountNumber);
+  
+  // Query to get the last bill's end date
+  const query = `
+    query AccountBills($accountNumber: String!) {
+      account(number: $accountNumber) {
+        bills(first: 12) {
+          edges {
+            node {
+              periodEndDate
+              issuedDate
+            }
+          }
+        }
+      }
+    }
+  `;
+  
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Basic ${btoa(apiKey + ':')}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        query,
+        variables: { accountNumber },
+      }),
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[Energy API] Failed to fetch bills via GraphQL:', response.status, errorText);
+      // Fallback or just return null
+      return null;
+    }
+    
+    const result = await response.json();
+    
+    if (result.errors) {
+      console.error('[Energy API] GraphQL Errors:', result.errors);
+      return null;
+    }
+    
+    const bills = result.data?.account?.bills?.edges;
+    
+    if (bills && bills.length > 0) {
+      // Sort bills by periodEndDate descending to get the latest one
+      // The API might return them in any order
+      const sortedBills = bills
+        .map((edge: any) => edge.node)
+        .sort((a: any, b: any) => {
+          return new Date(b.periodEndDate).getTime() - new Date(a.periodEndDate).getTime();
+        });
+        
+      const lastBill = sortedBills[0];
+      console.log('[Energy API] Found last bill:', lastBill);
+      
+      // We want to return the periodEndDate of the last bill
+      // The new billing period starts the day after this date
+      if (lastBill.periodEndDate) {
+        return new Date(lastBill.periodEndDate);
+      }
+    } else {
+      console.log('[Energy API] No bills found in GraphQL response');
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('[Energy API] Error fetching last bill date:', error);
+    return null;
+  }
+}
