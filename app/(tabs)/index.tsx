@@ -434,7 +434,7 @@ export default function HomeScreen() {
               </Pressable>
             </Link>
           </View>
-          {accountBalance !== 0 && (
+          {accountBalance !== null && (
             <Pressable
               style={styles.balanceCard}
               onPress={() => router.push('/billing')}

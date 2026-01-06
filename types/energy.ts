@@ -2,7 +2,7 @@ export interface EnergyRate {
   value_exc_vat: number;
   value_inc_vat: number;
   valid_from: string;
-  valid_to: string;
+  valid_to: string | null;
 }
 
 export interface EnergyRatesResponse {
@@ -202,6 +202,8 @@ export interface AccountProperty {
 
 export interface AccountResponse {
   number: string;
+  balance?: number;
+  ledger_balance?: number;
   properties: AccountProperty[];
 }
 

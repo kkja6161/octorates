@@ -175,13 +175,13 @@ export default function BillingScreen() {
               <Text
                 style={[
                   styles.balanceAmount,
-                  accountBalance >= 0 ? styles.creditAmount : styles.debitAmount,
+                  (accountBalance ?? 0) >= 0 ? styles.creditAmount : styles.debitAmount,
                 ]}
               >
-                {formatCurrency(accountBalance)}
+                {formatCurrency(accountBalance ?? 0)}
               </Text>
               <Text style={styles.balanceLabel}>
-                {accountBalance >= 0 ? 'IN CREDIT' : 'IN DEBIT'}
+                {(accountBalance ?? 0) >= 0 ? 'IN CREDIT' : 'IN DEBIT'}
               </Text>
             </View>
           </View>

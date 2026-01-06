@@ -199,7 +199,7 @@ export function processRates(rates: EnergyRatesResponse, isDailyRate: boolean = 
   
   return rates.results.map((rate) => {
     const validFrom = new Date(rate.valid_from);
-    const validTo = new Date(rate.valid_to);
+    const validTo = rate.valid_to ? new Date(rate.valid_to) : new Date('2099-12-31T23:59:59Z');
     
     const isCurrent = now >= validFrom && now < validTo;
     const isUpcoming = validFrom > now;
@@ -574,6 +574,10 @@ export async function fetchAccountData(
     }
     
     const data: AccountResponse = await response.json();
+    console.log('[Energy API] Account data keys:', Object.keys(data));
+    if (data.properties?.length > 0) {
+      console.log('[Energy API] First property keys:', Object.keys(data.properties[0]));
+    }
     console.log('[Energy API] Account data received:', JSON.stringify(data, null, 2));
     
     return data;
@@ -827,8 +831,21 @@ export async function fetchAccountBalance(
     
     const data = await response.json();
     
-    const balance = data.properties?.[0]?.balance || 0;
-    console.log('[Energy API] Account balance:', balance);
+    let balance = 0;
+    
+    // Check for ledger_balance first (most accurate for current balance)
+    if (typeof data.ledger_balance === 'number') {
+      balance = data.ledger_balance;
+      console.log('[Energy API] Using ledger_balance:', balance);
+    } else if (typeof data.balance === 'number') {
+      balance = data.balance;
+      console.log('[Energy API] Using balance:', balance);
+    } else if (data.properties?.[0]?.balance !== undefined) {
+      balance = data.properties[0].balance;
+      console.log('[Energy API] Using property balance:', balance);
+    } else {
+      console.log('[Energy API] No balance found in account response');
+    }
     
     return { balance };
   } catch (error) {
@@ -859,15 +876,10 @@ export async function fetchBills(
       throw new Error(`Failed to fetch bills: ${response.status}`);
     }
     
-    await response.json();
-    console.log('[Energy API] Account data for bills received');
+    const data = await response.json();
+    console.log('[Energy API] Bills received:', data.count);
     
-    return {
-      count: 0,
-      next: null,
-      previous: null,
-      results: [],
-    };
+    return data;
   } catch (error) {
     console.error('[Energy API] Error fetching bills:', error);
     throw error;
