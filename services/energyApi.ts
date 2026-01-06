@@ -1,5 +1,6 @@
 import { EnergyRatesResponse, ProcessedRate, ProductsResponse, TariffInfo, ConsumptionResponse, StandingChargesResponse, AccountResponse, ProcessedAccountData, ProcessedTariffAgreement, AccountBalance, BillsResponse } from '@/types/energy';
 import { DEFAULT_GSP_REGION, buildProductListUrl, buildFlexibleTariffUrl, buildGasTrackerTariffUrl, OCTOPUS_API_BASE, PRODUCT_CODE_MAPPING } from '@/constants/octopus';
+import { getCachedConsumption, setCachedConsumption, getCachedRates, setCachedRates, getCachedAccount, setCachedAccount, getCachedBalance, setCachedBalance, getCachedLastBillDate, setCachedLastBillDate, getCachedComparisonRates, setCachedComparisonRates, getCachedStandingCharge, setCachedStandingCharge } from '@/utils/apiCache';
 
 function normalizeProductCode(productCode: string): string {
   return PRODUCT_CODE_MAPPING[productCode] || productCode;
@@ -111,7 +112,22 @@ export async function fetchEnergyRates(
   
   console.log(`[Energy API] ========== FETCH ${fuelType.toUpperCase()} RATES ==========`);
   console.log(`[Energy API] Product: ${tariffCode}, Region: ${gspRegion}`);
-  console.log('[Energy API] Period from:', periodFrom);
+  
+  const cached = await getCachedRates(fuelType, tariffCode, gspRegion);
+  if (cached && !periodFrom) {
+    console.log(`[Energy API] Using cached ${fuelType} rates: ${cached.rates.length}`);
+    return {
+      count: cached.rates.length,
+      next: null,
+      previous: null,
+      results: cached.rates.map(r => ({
+        value_inc_vat: r.price,
+        value_exc_vat: r.price / 1.05,
+        valid_from: r.validFrom.toISOString(),
+        valid_to: r.validTo.toISOString(),
+      })),
+    };
+  }
   
   // For electricity, try single register (1R) first, then two register (2R) for Eco 7 tariffs
   if (fuelType === 'electricity') {
@@ -120,6 +136,8 @@ export async function fetchEnergyRates(
     
     if (result && result.results.length > 0) {
       console.log(`[Energy API] Found ${result.results.length} rates with 1R (single register)`);
+      const processed = processRates(result, false);
+      await setCachedRates(fuelType, tariffCode, gspRegion, processed);
       return result;
     }
     
@@ -129,8 +147,8 @@ export async function fetchEnergyRates(
     
     if (result && result.results.length > 0) {
       console.log(`[Energy API] Found ${result.results.length} rates with 2R (two register)`);
-      // For Eco 7 tariffs, filter to get only the standard/day rate (not the off-peak/night rate)
-      // Standard rates typically have valid_from times that don't start at 00:30 or similar off-peak times
+      const processed = processRates(result, false);
+      await setCachedRates(fuelType, tariffCode, gspRegion, processed);
       return result;
     }
     
@@ -182,12 +200,17 @@ export async function fetchEnergyRates(
     
     console.log(`[Energy API] ${fuelType} rates - Total rates:`, allResults.length);
     
-    return {
+    const result = {
       count: allResults.length,
       next: null,
       previous: null,
       results: allResults,
     };
+    
+    const processed = processRates(result, fuelType === 'gas');
+    await setCachedRates(fuelType, tariffCode, gspRegion, processed);
+    
+    return result;
   } catch (error) {
     console.error('[Energy API] Error fetching rates:', error);
     throw error;
@@ -392,12 +415,14 @@ export async function fetchComparisonTariffRates(
 ): Promise<ProcessedRate[]> {
   console.log(`[Energy API] ========== FETCH COMPARISON TARIFF RATES ==========`);
   console.log(`[Energy API] Comparison tariff: ${productCode}`);
-  console.log(`[Energy API] Region: ${gspRegion}`);
-  console.log(`[Energy API] Fuel type: ${fuelType}`);
-  console.log(`[Energy API] Period from: ${periodFrom}`);
+  
+  const cached = await getCachedComparisonRates(fuelType, productCode, gspRegion);
+  if (cached) {
+    console.log(`[Energy API] Using cached comparison rates: ${cached.rates.length}`);
+    return cached.rates;
+  }
   
   try {
-    // First try with the provided date range
     let data = await fetchEnergyRates(
       gspRegion,
       productCode,
@@ -406,7 +431,6 @@ export async function fetchComparisonTariffRates(
       fuelType
     );
     
-    // If no results and we have a date filter, try without it
     if (data.results.length === 0 && periodFrom) {
       console.log(`[Energy API] No comparison rates found with date filter, trying without...`);
       data = await fetchEnergyRates(
@@ -423,14 +447,11 @@ export async function fetchComparisonTariffRates(
     console.log(`[Energy API] Comparison tariff rates processed count: ${processed.length}`);
     
     if (processed.length > 0) {
-      console.log(`[Energy API] Comparison rate sample - first: ${processed[0].price}p, last: ${processed[processed.length - 1].price}p`);
-    } else {
-      console.log(`[Energy API] No comparison rates available for ${productCode} (${fuelType})`);
+      await setCachedComparisonRates(fuelType, productCode, gspRegion, processed);
     }
     
     return processed;
   } catch (error) {
-    // Silently handle errors for comparison rates - they're not critical
     console.log(`[Energy API] Comparison rates not available for ${productCode} (${fuelType}):`, error instanceof Error ? error.message : 'Unknown error');
     return [];
   }
@@ -443,6 +464,11 @@ export async function fetchStandingCharge(
   periodFrom?: string,
   periodTo?: string
 ): Promise<number | null> {
+  const cached = await getCachedStandingCharge(fuelType, productCode, gspRegion);
+  if (cached !== null) {
+    return cached;
+  }
+  
   const url = buildSmartStandingChargeUrl(productCode, gspRegion, fuelType);
   
   const params = new URLSearchParams();
@@ -457,7 +483,6 @@ export async function fetchStandingCharge(
     const response = await fetch(fullUrl);
     
     if (!response.ok) {
-      // Silently handle 404s - product may not exist
       if (response.status === 404) {
         console.log(`[Energy API] Standing charge not available for ${productCode} (${fuelType})`);
         return null;
@@ -471,8 +496,10 @@ export async function fetchStandingCharge(
     
     if (data.results && data.results.length > 0) {
       const mostRecent = data.results[0];
-      console.log(`[Energy API] Standing charge for ${productCode} (${fuelType}):`, mostRecent.value_inc_vat, 'p/day');
-      return mostRecent.value_inc_vat;
+      const value = mostRecent.value_inc_vat;
+      console.log(`[Energy API] Standing charge for ${productCode} (${fuelType}):`, value, 'p/day');
+      await setCachedStandingCharge(fuelType, productCode, gspRegion, value);
+      return value;
     }
     
     return null;
@@ -558,7 +585,16 @@ export async function fetchAccountData(
   
   console.log('[Energy API] ========== FETCH ACCOUNT DATA ==========');
   console.log('[Energy API] Account:', accountNumber);
-  console.log('[Energy API] URL:', url);
+  
+  const cached = await getCachedAccount(accountNumber);
+  if (cached) {
+    console.log('[Energy API] Using cached account data');
+    const mockResponse: AccountResponse = {
+      number: cached.data.accountNumber,
+      properties: [],
+    };
+    return mockResponse;
+  }
   
   try {
     const response = await fetch(url, {
@@ -574,11 +610,12 @@ export async function fetchAccountData(
     }
     
     const data: AccountResponse = await response.json();
-    console.log('[Energy API] Account data keys:', Object.keys(data));
-    if (data.properties?.length > 0) {
-      console.log('[Energy API] First property keys:', Object.keys(data.properties[0]));
+    console.log('[Energy API] Account data fetched from API');
+    
+    const processed = processAccountData(data);
+    if (processed) {
+      await setCachedAccount(accountNumber, processed);
     }
-    console.log('[Energy API] Account data received:', JSON.stringify(data, null, 2));
     
     return data;
   } catch (error) {
@@ -709,34 +746,47 @@ export async function fetchConsumption(
   periodTo?: string,
   days?: number
 ): Promise<ConsumptionResponse> {
+  console.log(`[Energy API] ========== FETCH ${fuelType.toUpperCase()} CONSUMPTION ==========`);
+  console.log(`[Energy API] MPAN/MPRN: ${mpanOrMprn}`);
+  console.log(`[Energy API] Serial: ${serialNumber}`);
+  
+  const cached = await getCachedConsumption(fuelType, mpanOrMprn);
+  
   const endpoint = fuelType === 'electricity' 
     ? `electricity-meter-points/${mpanOrMprn}/meters/${serialNumber}/consumption`
     : `gas-meter-points/${mpanOrMprn}/meters/${serialNumber}/consumption`;
   
   const baseUrl = `${OCTOPUS_API_BASE}/v1/${endpoint}/`;
   
-  const allResults: ConsumptionResponse['results'] = [];
+  let allResults: ConsumptionResponse['results'] = [];
+  
+  let fetchFrom = periodFrom;
+  
+  if (cached) {
+    allResults = [...cached.data];
+    console.log(`[Energy API] Using ${allResults.length} cached entries`);
+    console.log(`[Energy API] Last cached fetch: ${cached.lastFetchDate}`);
+    
+    const lastCachedDate = new Date(cached.lastFetchDate);
+    lastCachedDate.setDate(lastCachedDate.getDate() + 1);
+    fetchFrom = lastCachedDate.toISOString();
+    
+    console.log(`[Energy API] Fetching incremental data from: ${fetchFrom}`);
+  }
   
   const params = new URLSearchParams();
-  // Fixed page size of 17520 to ensure we get all consumption data
   const pageSize = 17520;
   params.append('page_size', pageSize.toString());
   params.append('order_by', 'period');
-  if (periodFrom) params.append('period_from', periodFrom);
+  if (fetchFrom) params.append('period_from', fetchFrom);
   if (periodTo) params.append('period_to', periodTo);
   
   let nextUrl: string | null = params.toString() ? `${baseUrl}?${params.toString()}` : baseUrl;
   
-  console.log(`[Energy API] ========== FETCH ${fuelType.toUpperCase()} CONSUMPTION ==========`);
-  console.log(`[Energy API] MPAN/MPRN: ${mpanOrMprn}`);
-  console.log(`[Energy API] Serial: ${serialNumber}`);
-  console.log(`[Energy API] Days requested: ${days}`);
-  console.log(`[Energy API] Period from: ${periodFrom}`);
-  console.log(`[Energy API] Page size: ${pageSize}`);
-  console.log(`[Energy API] Initial URL:`, nextUrl);
-  
   try {
     let pageCount = 0;
+    const newResults: ConsumptionResponse['results'] = [];
+    
     while (nextUrl) {
       pageCount++;
       console.log(`[Energy API] ${fuelType} - Fetching page ${pageCount}...`);
@@ -747,9 +797,16 @@ export async function fetchConsumption(
         },
       });
       
-      console.log(`[Energy API] ${fuelType} - Response status:`, response.status);
-      
       if (!response.ok) {
+        if (cached) {
+          console.log(`[Energy API] API request failed, using cached data`);
+          return {
+            count: allResults.length,
+            next: null,
+            previous: null,
+            results: allResults,
+          };
+        }
         const errorText = await response.text();
         console.error(`[Energy API] ${fuelType} - FAILED:`, response.status, errorText);
         throw new Error(`Failed to fetch consumption: ${response.status}`);
@@ -757,43 +814,33 @@ export async function fetchConsumption(
       
       const data: ConsumptionResponse = await response.json();
       console.log(`[Energy API] ${fuelType} - Page ${pageCount} received:`, data.results.length, 'entries');
-      console.log(`[Energy API] ${fuelType} - API total count:`, data.count);
-      console.log(`[Energy API] ${fuelType} - Has next page:`, !!data.next);
       
-      if (data.results.length > 0) {
-        const firstInPage = data.results[0];
-        const lastInPage = data.results[data.results.length - 1];
-        console.log(`[Energy API] ${fuelType} - Page ${pageCount} date range: ${lastInPage.interval_start} to ${firstInPage.interval_end}`);
-      }
-      
-      allResults.push(...data.results);
+      newResults.push(...data.results);
       nextUrl = data.next;
-      
-      if (nextUrl) {
-        console.log(`[Energy API] ${fuelType} - Next page URL:`, nextUrl);
-      }
     }
     
-    console.log(`[Energy API] ${fuelType} - ========== FETCH COMPLETE ==========`);
-    console.log(`[Energy API] ${fuelType} - Total pages fetched:`, pageCount);
+    console.log(`[Energy API] ${fuelType} - New entries fetched:`, newResults.length);
+    
+    if (newResults.length > 0) {
+      allResults.push(...newResults);
+      
+      allResults.sort((a, b) => 
+        new Date(b.interval_start).getTime() - new Date(a.interval_start).getTime()
+      );
+      
+      const uniqueResults = Array.from(
+        new Map(allResults.map(item => [item.interval_start, item])).values()
+      );
+      
+      allResults = uniqueResults;
+      
+      const latestDate = allResults[0].interval_start;
+      await setCachedConsumption(fuelType, mpanOrMprn, serialNumber, allResults, latestDate);
+    } else if (!cached) {
+      console.log(`[Energy API] No data returned from API`);
+    }
+    
     console.log(`[Energy API] ${fuelType} - Total entries:`, allResults.length);
-    
-    if (allResults.length > 0) {
-      const firstEntry = allResults[0];
-      const lastEntry = allResults[allResults.length - 1];
-      console.log(`[Energy API] ${fuelType} - Overall date range: ${lastEntry.interval_start} to ${firstEntry.interval_end}`);
-      
-      // Count unique days
-      const uniqueDays = new Set<string>();
-      allResults.forEach(entry => {
-        const date = new Date(entry.interval_start).toISOString().split('T')[0];
-        uniqueDays.add(date);
-      });
-      console.log(`[Energy API] ${fuelType} - Unique days in data:`, uniqueDays.size);
-      console.log(`[Energy API] ${fuelType} - Days list:`, Array.from(uniqueDays).sort().join(', '));
-    } else {
-      console.log(`[Energy API] ${fuelType} - WARNING: No results returned!`);
-    }
     
     return {
       count: allResults.length,
@@ -802,6 +849,15 @@ export async function fetchConsumption(
       results: allResults,
     };
   } catch (error) {
+    if (cached) {
+      console.log(`[Energy API] Error fetching, using cached data:`, error);
+      return {
+        count: allResults.length,
+        next: null,
+        previous: null,
+        results: allResults,
+      };
+    }
     console.error(`[Energy API] ${fuelType} - ERROR:`, error);
     throw error;
   }
@@ -811,10 +867,16 @@ export async function fetchAccountBalance(
   accountNumber: string,
   apiKey: string
 ): Promise<AccountBalance> {
-  const url = `${OCTOPUS_API_BASE}/v1/accounts/${accountNumber}/`;
-  
   console.log('[Energy API] ========== FETCH ACCOUNT BALANCE ==========');
   console.log('[Energy API] Account:', accountNumber);
+  
+  const cached = await getCachedBalance(accountNumber);
+  if (cached) {
+    console.log('[Energy API] Using cached balance:', cached.balance);
+    return { balance: cached.balance };
+  }
+  
+  const url = `${OCTOPUS_API_BASE}/v1/accounts/${accountNumber}/`;
   
   try {
     const response = await fetch(url, {
@@ -833,7 +895,6 @@ export async function fetchAccountBalance(
     
     let balance = 0;
     
-    // Check for ledger_balance first (most accurate for current balance)
     if (typeof data.ledger_balance === 'number') {
       balance = data.ledger_balance;
       console.log('[Energy API] Using ledger_balance:', balance);
@@ -846,6 +907,8 @@ export async function fetchAccountBalance(
     } else {
       console.log('[Energy API] No balance found in account response');
     }
+    
+    await setCachedBalance(accountNumber, balance);
     
     return { balance };
   } catch (error) {
@@ -936,12 +999,17 @@ export async function fetchLastBillDate(
   accountNumber: string,
   apiKey: string
 ): Promise<Date | null> {
-  const url = 'https://api.octopus.energy/v1/graphql/';
-  
   console.log('[Energy API] ========== FETCH LAST BILL DATE (GraphQL) ==========');
   console.log('[Energy API] Account:', accountNumber);
   
-  // First, obtain a Kraken token
+  const cached = await getCachedLastBillDate(accountNumber);
+  if (cached) {
+    console.log('[Energy API] Using cached last bill date:', cached.date);
+    return new Date(cached.date);
+  }
+  
+  const url = 'https://api.octopus.energy/v1/graphql/';
+  
   const krakenToken = await obtainKrakenToken(apiKey);
   if (!krakenToken) {
     console.error('[Energy API] Could not obtain Kraken token');
@@ -1005,10 +1073,10 @@ export async function fetchLastBillDate(
       const lastBill = sortedBills[0];
       console.log('[Energy API] Found last bill:', lastBill);
       
-      // We want to return the toDate of the last bill
-      // The new billing period starts the day after this date
       if (lastBill.toDate) {
-        return new Date(lastBill.toDate);
+        const billDate = new Date(lastBill.toDate);
+        await setCachedLastBillDate(accountNumber, billDate);
+        return billDate;
       }
     } else {
       console.log('[Energy API] No bills found in GraphQL response');
