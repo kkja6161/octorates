@@ -1,4 +1,4 @@
-import { EnergyRatesResponse, ProcessedRate, ProductsResponse, TariffInfo, ConsumptionResponse, StandingChargesResponse, AccountResponse, ProcessedAccountData, ProcessedTariffAgreement } from '@/types/energy';
+import { EnergyRatesResponse, ProcessedRate, ProductsResponse, TariffInfo, ConsumptionResponse, StandingChargesResponse, AccountResponse, ProcessedAccountData, ProcessedTariffAgreement, AccountBalance, BillsResponse } from '@/types/energy';
 import { DEFAULT_GSP_REGION, buildProductListUrl, buildFlexibleTariffUrl, buildGasTrackerTariffUrl, OCTOPUS_API_BASE, PRODUCT_CODE_MAPPING } from '@/constants/octopus';
 
 function normalizeProductCode(productCode: string): string {
@@ -799,6 +799,77 @@ export async function fetchConsumption(
     };
   } catch (error) {
     console.error(`[Energy API] ${fuelType} - ERROR:`, error);
+    throw error;
+  }
+}
+
+export async function fetchAccountBalance(
+  accountNumber: string,
+  apiKey: string
+): Promise<AccountBalance> {
+  const url = `${OCTOPUS_API_BASE}/v1/accounts/${accountNumber}/`;
+  
+  console.log('[Energy API] ========== FETCH ACCOUNT BALANCE ==========');
+  console.log('[Energy API] Account:', accountNumber);
+  
+  try {
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': `Basic ${btoa(apiKey + ':')}`,
+      },
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[Energy API] Failed to fetch account balance:', response.status, errorText);
+      throw new Error(`Failed to fetch account balance: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    
+    const balance = data.properties?.[0]?.balance || 0;
+    console.log('[Energy API] Account balance:', balance);
+    
+    return { balance };
+  } catch (error) {
+    console.error('[Energy API] Error fetching account balance:', error);
+    throw error;
+  }
+}
+
+export async function fetchBills(
+  accountNumber: string,
+  apiKey: string
+): Promise<BillsResponse> {
+  const url = `${OCTOPUS_API_BASE}/v1/accounts/${accountNumber}/`;
+  
+  console.log('[Energy API] ========== FETCH BILLS ==========');
+  console.log('[Energy API] Account:', accountNumber);
+  
+  try {
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': `Basic ${btoa(apiKey + ':')}`,
+      },
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[Energy API] Failed to fetch bills:', response.status, errorText);
+      throw new Error(`Failed to fetch bills: ${response.status}`);
+    }
+    
+    await response.json();
+    console.log('[Energy API] Account data for bills received');
+    
+    return {
+      count: 0,
+      next: null,
+      previous: null,
+      results: [],
+    };
+  } catch (error) {
+    console.error('[Energy API] Error fetching bills:', error);
     throw error;
   }
 }

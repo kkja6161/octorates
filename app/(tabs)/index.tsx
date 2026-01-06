@@ -9,7 +9,6 @@ import {
   LayoutAnimation,
   Platform,
   UIManager,
-  Dimensions,
 } from 'react-native';
 import { Stack, router, Link } from 'expo-router';
 import { Zap, Flame, Settings } from 'lucide-react-native';
@@ -17,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useEnergyRates } from '@/providers/EnergyRatesProvider';
 import { useConsumption } from '@/providers/ConsumptionProvider';
+import { useBilling } from '@/providers/BillingProvider';
 import { useComparisonRate } from '@/hooks/useComparisonRate';
 import { useColors } from '@/constants/colors';
 import { ProcessedRate } from '@/types/energy';
@@ -46,6 +46,7 @@ export default function HomeScreen() {
   } = useEnergyRates();
   
   const { showGas } = useConsumption();
+  const { accountBalance } = useBilling();
   
   const { comparisonElectricityRate, comparisonGasRate, comparisonElectricityTariffName, comparisonGasTariffName } = useComparisonRate();
   
@@ -98,6 +99,10 @@ export default function HomeScreen() {
 
   const formatPrice = (price: number) => {
     return `${price.toFixed(1)}p`;
+  };
+
+  const formatCurrency = (amount: number) => {
+    return `£${Math.abs(amount).toFixed(2)}`;
   };
 
   const isAgileTariff = (productCode: string) => {
@@ -375,6 +380,44 @@ export default function HomeScreen() {
       fontSize: 15,
       fontWeight: '700' as const,
     },
+    placeholderContainer: {
+      padding: 32,
+      alignItems: 'center' as const,
+    },
+    placeholderTitle: {
+      fontSize: 16,
+      color: colors.text.secondary,
+      fontWeight: '600' as const,
+    },
+    balanceCard: {
+      backgroundColor: colors.surface,
+      borderRadius: 16,
+      padding: 20,
+      marginBottom: 16,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: isDark ? 0.3 : 0.08,
+      shadowRadius: 8,
+      elevation: 3,
+    },
+    balanceCardTitle: {
+      fontSize: 14,
+      color: colors.text.secondary,
+      fontWeight: '600' as const,
+      textTransform: 'uppercase' as const,
+      letterSpacing: 0.5,
+      marginBottom: 8,
+    },
+    balanceAmount: {
+      fontSize: 32,
+      fontWeight: '700' as const,
+    },
+    creditAmount: {
+      color: colors.success,
+    },
+    debitAmount: {
+      color: colors.error,
+    },
   });
 
   return (
@@ -391,6 +434,24 @@ export default function HomeScreen() {
               </Pressable>
             </Link>
           </View>
+          {accountBalance !== 0 && (
+            <Pressable
+              style={styles.balanceCard}
+              onPress={() => router.push('/billing')}
+              accessibilityRole="button"
+            >
+              <Text style={styles.balanceCardTitle}>Account Balance</Text>
+              <Text
+                style={[
+                  styles.balanceAmount,
+                  accountBalance >= 0 ? styles.creditAmount : styles.debitAmount,
+                ]}
+              >
+                {formatCurrency(accountBalance)} {accountBalance >= 0 ? 'credit' : 'debit'}
+              </Text>
+            </Pressable>
+          )}
+
           <View style={styles.fuelTypesContainer}>
             <Pressable
               accessibilityRole="button"
@@ -492,7 +553,7 @@ export default function HomeScreen() {
                     {isAgile ? (
                       <>
                         <Pressable style={styles.barGraphCard} onPress={() => router.push('/electricity-detail')}>
-                          <Text style={styles.sectionTitle}>Today's Rates</Text>
+                          <Text style={styles.sectionTitle}>Today&apos;s Rates</Text>
                           <RateLineChart 
                             rates={todayRates} 
                             type={expandedFuelType} 
@@ -504,7 +565,7 @@ export default function HomeScreen() {
 
                         {tomorrowRates.length > 0 && (
                           <Pressable style={styles.barGraphCard} onPress={() => router.push('/electricity-detail')}>
-                            <Text style={styles.sectionTitle}>Tomorrow's Rates</Text>
+                            <Text style={styles.sectionTitle}>Tomorrow&apos;s Rates</Text>
                             <RateLineChart 
                               rates={tomorrowRates} 
                               type={expandedFuelType} 
@@ -533,7 +594,7 @@ export default function HomeScreen() {
                     ) : (
                       <>
                         <View style={styles.barGraphCard}>
-                          <Text style={styles.sectionTitle}>Today's Rates</Text>
+                          <Text style={styles.sectionTitle}>Today&apos;s Rates</Text>
                           <ScrollView 
                             ref={todayRatesScrollRef}
                             horizontal 
@@ -576,7 +637,7 @@ export default function HomeScreen() {
 
                         {tomorrowRates.length > 0 && (
                           <View style={styles.barGraphCard}>
-                            <Text style={styles.sectionTitle}>Tomorrow's Rates</Text>
+                            <Text style={styles.sectionTitle}>Tomorrow&apos;s Rates</Text>
                             <ScrollView 
                               horizontal 
                               showsHorizontalScrollIndicator={false}
@@ -644,7 +705,6 @@ export default function HomeScreen() {
             ) : (
                <View style={styles.placeholderContainer}>
                  <Text style={styles.placeholderTitle}>No Data Available</Text>
-                 <Text style={styles.placeholderText}>Please pull down to refresh rates.</Text>
                </View>
             );
           })()}
