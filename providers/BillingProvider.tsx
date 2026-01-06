@@ -75,6 +75,8 @@ export const [BillingProvider, useBilling] = createContextHook(() => {
 
       if (accountData.electricity?.mpan && accountData.electricity.serialNumbers.length > 0) {
         try {
+          console.log(`[Billing] Fetching electricity consumption from ${estimatedBillStartDate.toISOString()} to ${now.toISOString()}`);
+          
           const elecConsumption = await fetchConsumption(
             accountData.electricity.mpan,
             accountData.electricity.serialNumbers[0],
@@ -84,38 +86,41 @@ export const [BillingProvider, useBilling] = createContextHook(() => {
             now.toISOString()
           );
 
+          console.log(`[Billing] Electricity consumption results: ${elecConsumption.results.length} entries`);
+
           const totalConsumption = elecConsumption.results.reduce(
             (sum, entry: ConsumptionEntry) => sum + entry.consumption,
             0
           );
 
+          console.log(`[Billing] Total electricity consumption: ${totalConsumption} kWh`);
+
           // Get all agreements that overlap with the billing period
           const agreements = accountData.electricity.agreements.filter(a => {
             const start = a.validFrom;
-            const end = a.validTo || new Date();
-            return start < now && end > estimatedBillStartDate;
+            const end = a.validTo || new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000); // Default to 1 year from now if no end
+            return start <= now && end >= estimatedBillStartDate;
           });
 
-          // Fetch rates for each relevant agreement
-          console.log(`[Billing] Found ${agreements.length} relevant electricity agreements`);
+          // If no agreements match, use the most recent one
+          const relevantAgreements = agreements.length > 0 
+            ? agreements 
+            : accountData.electricity.agreements.slice(-1);
+
+          console.log(`[Billing] Found ${relevantAgreements.length} relevant electricity agreements`);
           
-          const periodRates = await Promise.all(agreements.map(async (agreement) => {
-            const rangeStart = new Date(Math.max(agreement.validFrom.getTime(), estimatedBillStartDate.getTime()));
-            const rangeEnd = agreement.validTo ? new Date(Math.min(agreement.validTo.getTime(), now.getTime())) : now;
+          const periodRates = await Promise.all(relevantAgreements.map(async (agreement) => {
+            console.log(`[Billing] Processing agreement: ${agreement.productCode}`);
             
-            console.log(`[Billing] Fetching rates for ${agreement.productCode} from ${rangeStart.toISOString()} to ${rangeEnd.toISOString()}`);
-
             // Add buffer to start date to ensure we get covering rates
-            const queryStart = new Date(rangeStart);
-            queryStart.setDate(queryStart.getDate() - 7); // Increased buffer to 7 days
+            const queryStart = new Date(estimatedBillStartDate);
+            queryStart.setDate(queryStart.getDate() - 14); // 14 day buffer
 
-            // Fetch rates without end date to ensure we get all relevant future rates
-            // This is safer than restricting to rangeEnd if the API has pagination or gaps
             const ratesData = await fetchEnergyRates(
               selectedRegion,
               agreement.productCode,
               queryStart.toISOString(),
-              undefined, // Open-ended to ensure we get everything
+              undefined,
               'electricity'
             );
             
@@ -123,85 +128,102 @@ export const [BillingProvider, useBilling] = createContextHook(() => {
             console.log(`[Billing] Got ${rates.length} rates for ${agreement.productCode}`);
             
             const standingCharge = await fetchStandingCharge(agreement.productCode, selectedRegion, 'electricity');
+            console.log(`[Billing] Standing charge for ${agreement.productCode}: ${standingCharge}p`);
             
             return {
               agreement,
               rates,
               standingCharge,
               validFrom: agreement.validFrom,
-              validTo: agreement.validTo || new Date(),
+              validTo: agreement.validTo || new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000),
             };
           }));
 
           let totalCost = 0;
           let totalStandingCharge = 0;
-          
-          // Calculate standing charge based on days in each tariff period within the billing window
+          let matchedEntries = 0;
+          let unmatchedEntries = 0;
           
           // Sort periods by date
           periodRates.sort((a, b) => a.validFrom.getTime() - b.validFrom.getTime());
           
           // Calculate standing charges for the period
           let standingChargeDate = new Date(estimatedBillStartDate);
-          const endDate = new Date(); // now
+          const endDate = new Date(now);
+          let daysCount = 0;
           
           while (standingChargeDate < endDate) {
-            // Find active agreement for this day
             const activePeriod = periodRates.find(p => 
               p.validFrom <= standingChargeDate && p.validTo > standingChargeDate
             );
             
-            // Use the active period's standing charge, or fallback to the most recent one if none matches exactly
             const charge = activePeriod?.standingCharge ?? periodRates[periodRates.length - 1]?.standingCharge ?? 0;
             totalStandingCharge += charge;
+            daysCount++;
             
-            // Move to next day
             standingChargeDate = new Date(standingChargeDate);
             standingChargeDate.setDate(standingChargeDate.getDate() + 1);
           }
+          
+          console.log(`[Billing] Standing charge calculated for ${daysCount} days: ${totalStandingCharge}p`);
 
           // Calculate consumption cost
           elecConsumption.results.forEach((entry: ConsumptionEntry) => {
             const entryTime = new Date(entry.interval_start);
             
             // Find the correct period/agreement for this entry
-            const activePeriod = periodRates.find(p => 
+            let activePeriod = periodRates.find(p => 
               p.validFrom <= entryTime && p.validTo > entryTime
             );
             
+            // Fallback to last period if no exact match
+            if (!activePeriod && periodRates.length > 0) {
+              activePeriod = periodRates[periodRates.length - 1];
+            }
+            
             if (activePeriod && activePeriod.rates.length > 0) {
               // Find the rate within this period
-              const rate = activePeriod.rates.find(
+              let rate = activePeriod.rates.find(
                 (r: ProcessedRate) => entryTime >= r.validFrom && entryTime < r.validTo
               );
               
-              // Fallback logic for finding rate if exact match fails
+              // Fallback: find rate for same day
+              if (!rate) {
+                rate = activePeriod.rates.find(r => {
+                  const rDate = new Date(r.validFrom);
+                  const eDate = new Date(entryTime);
+                  return rDate.getDate() === eDate.getDate() && 
+                         rDate.getMonth() === eDate.getMonth() &&
+                         rDate.getFullYear() === eDate.getFullYear();
+                });
+              }
+              
+              // Fallback: use average rate for the period
+              if (!rate && activePeriod.rates.length > 0) {
+                const avgPrice = activePeriod.rates.reduce((sum, r) => sum + r.price, 0) / activePeriod.rates.length;
+                totalCost += entry.consumption * (avgPrice / 100);
+                matchedEntries++;
+                return;
+              }
+              
               if (rate) {
                 totalCost += entry.consumption * (rate.price / 100);
+                matchedEntries++;
               } else {
-                 // Try to find closest rate or day rate
-                 const dayMatch = activePeriod.rates.find(r => {
-                   const rDate = new Date(r.validFrom);
-                   const eDate = new Date(entryTime);
-                   return rDate.getDate() === eDate.getDate() && rDate.getMonth() === eDate.getMonth();
-                 });
-                 if (dayMatch) {
-                    totalCost += entry.consumption * (dayMatch.price / 100);
-                 } else {
-                   // console.log(`[Billing] No rate match for ${entryTime.toISOString()} in ${activePeriod.agreement.productCode}`);
-                 }
+                unmatchedEntries++;
               }
             } else {
-               // console.log(`[Billing] No active period or rates for ${entryTime.toISOString()}`);
+              unmatchedEntries++;
             }
           });
 
-          console.log(`[Billing] Electricity calc: Consumption=${totalConsumption}, Cost=£${totalCost.toFixed(2)}, Standing=£${(totalStandingCharge/100).toFixed(2)}`);
+          console.log(`[Billing] Rate matching: ${matchedEntries} matched, ${unmatchedEntries} unmatched`);
+          console.log(`[Billing] Electricity calc: Consumption=${totalConsumption.toFixed(2)} kWh, Cost=£${totalCost.toFixed(2)}, Standing=£${(totalStandingCharge/100).toFixed(2)}`);
 
           electricityEstimate = {
             consumption: totalConsumption,
             cost: totalCost,
-            standingCharge: totalStandingCharge / 100, // Convert to pounds
+            standingCharge: totalStandingCharge / 100,
             totalCost: totalCost + (totalStandingCharge / 100),
             periodStart: estimatedBillStartDate,
             periodEnd: estimatedBillEndDate,
@@ -214,6 +236,8 @@ export const [BillingProvider, useBilling] = createContextHook(() => {
 
       if (showGas && accountData.gas?.mprn && accountData.gas.serialNumbers.length > 0) {
         try {
+          console.log(`[Billing] Fetching gas consumption from ${estimatedBillStartDate.toISOString()} to ${now.toISOString()}`);
+          
           const gasConsumption = await fetchConsumption(
             accountData.gas.mprn,
             accountData.gas.serialNumbers[0],
@@ -223,27 +247,35 @@ export const [BillingProvider, useBilling] = createContextHook(() => {
             now.toISOString()
           );
 
+          console.log(`[Billing] Gas consumption results: ${gasConsumption.results.length} entries`);
+
           const totalConsumptionM3 = gasConsumption.results.reduce(
             (sum, entry: ConsumptionEntry) => sum + entry.consumption,
             0
           );
 
           const totalConsumptionKwh = totalConsumptionM3 * (gasCv || GAS_CV) * GAS_VCF / GAS_CF;
+          console.log(`[Billing] Total gas consumption: ${totalConsumptionM3.toFixed(2)} m³ = ${totalConsumptionKwh.toFixed(2)} kWh`);
 
           // Get all agreements that overlap with the billing period
           const agreements = accountData.gas.agreements.filter(a => {
             const start = a.validFrom;
-            const end = a.validTo || new Date();
-            return start < now && end > estimatedBillStartDate;
+            const end = a.validTo || new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000);
+            return start <= now && end >= estimatedBillStartDate;
           });
 
-          // Fetch rates for each relevant agreement
-          const periodRates = await Promise.all(agreements.map(async (agreement) => {
-            const rangeStart = new Date(Math.max(agreement.validFrom.getTime(), estimatedBillStartDate.getTime()));
+          // If no agreements match, use the most recent one
+          const relevantAgreements = agreements.length > 0 
+            ? agreements 
+            : accountData.gas.agreements.slice(-1);
+
+          console.log(`[Billing] Found ${relevantAgreements.length} relevant gas agreements`);
+
+          const periodRates = await Promise.all(relevantAgreements.map(async (agreement) => {
+            console.log(`[Billing] Processing gas agreement: ${agreement.productCode}`);
             
-            // Add buffer
-            const queryStart = new Date(rangeStart);
-            queryStart.setDate(queryStart.getDate() - 7);
+            const queryStart = new Date(estimatedBillStartDate);
+            queryStart.setDate(queryStart.getDate() - 14);
 
             const ratesData = await fetchEnergyRates(
               selectedRegion,
@@ -253,27 +285,31 @@ export const [BillingProvider, useBilling] = createContextHook(() => {
               'gas'
             );
             
-            const rates = processRates(ratesData, true); // true for daily rates (gas)
+            const rates = processRates(ratesData, true);
+            console.log(`[Billing] Got ${rates.length} gas rates for ${agreement.productCode}`);
+            
             const standingCharge = await fetchStandingCharge(agreement.productCode, selectedRegion, 'gas');
+            console.log(`[Billing] Gas standing charge for ${agreement.productCode}: ${standingCharge}p`);
             
             return {
               agreement,
               rates,
               standingCharge,
               validFrom: agreement.validFrom,
-              validTo: agreement.validTo || new Date(),
+              validTo: agreement.validTo || new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000),
             };
           }));
 
           let totalCost = 0;
           let totalStandingCharge = 0;
+          let matchedEntries = 0;
+          let unmatchedEntries = 0;
           
-          // Sort periods
           periodRates.sort((a, b) => a.validFrom.getTime() - b.validFrom.getTime());
           
-          // Calculate standing charges
           let standingChargeDate = new Date(estimatedBillStartDate);
-          const endDate = new Date();
+          const endDate = new Date(now);
+          let daysCount = 0;
           
           while (standingChargeDate < endDate) {
             const activePeriod = periodRates.find(p => 
@@ -281,40 +317,61 @@ export const [BillingProvider, useBilling] = createContextHook(() => {
             );
             const charge = activePeriod?.standingCharge ?? periodRates[periodRates.length - 1]?.standingCharge ?? 0;
             totalStandingCharge += charge;
+            daysCount++;
             
             standingChargeDate = new Date(standingChargeDate);
             standingChargeDate.setDate(standingChargeDate.getDate() + 1);
           }
+          
+          console.log(`[Billing] Gas standing charge calculated for ${daysCount} days: ${totalStandingCharge}p`);
 
-          // Calculate consumption cost
           gasConsumption.results.forEach((entry: ConsumptionEntry) => {
             const entryTime = new Date(entry.interval_start);
-            const activePeriod = periodRates.find(p => 
+            let activePeriod = periodRates.find(p => 
               p.validFrom <= entryTime && p.validTo > entryTime
             );
             
+            if (!activePeriod && periodRates.length > 0) {
+              activePeriod = periodRates[periodRates.length - 1];
+            }
+            
             if (activePeriod && activePeriod.rates.length > 0) {
-              const rate = activePeriod.rates.find(
+              let rate = activePeriod.rates.find(
                 (r: ProcessedRate) => entryTime >= r.validFrom && entryTime < r.validTo
               );
+              
+              if (!rate) {
+                rate = activePeriod.rates.find(r => {
+                  const rDate = new Date(r.validFrom);
+                  const eDate = new Date(entryTime);
+                  return rDate.getDate() === eDate.getDate() && 
+                         rDate.getMonth() === eDate.getMonth() &&
+                         rDate.getFullYear() === eDate.getFullYear();
+                });
+              }
+              
+              if (!rate && activePeriod.rates.length > 0) {
+                const avgPrice = activePeriod.rates.reduce((sum, r) => sum + r.price, 0) / activePeriod.rates.length;
+                const kwh = entry.consumption * (gasCv || GAS_CV) * GAS_VCF / GAS_CF;
+                totalCost += kwh * (avgPrice / 100);
+                matchedEntries++;
+                return;
+              }
               
               if (rate) {
                 const kwh = entry.consumption * (gasCv || GAS_CV) * GAS_VCF / GAS_CF;
                 totalCost += kwh * (rate.price / 100);
-              } else if (activePeriod.rates.length > 0) {
-                // For gas (daily), just find the rate for that day
-                const dayRate = activePeriod.rates.find(r => {
-                   const rDate = new Date(r.validFrom);
-                   const eDate = new Date(entryTime);
-                   return rDate.getDate() === eDate.getDate() && rDate.getMonth() === eDate.getMonth();
-                });
-                if (dayRate) {
-                   const kwh = entry.consumption * (gasCv || GAS_CV) * GAS_VCF / GAS_CF;
-                   totalCost += kwh * (dayRate.price / 100);
-                }
+                matchedEntries++;
+              } else {
+                unmatchedEntries++;
               }
+            } else {
+              unmatchedEntries++;
             }
           });
+
+          console.log(`[Billing] Gas rate matching: ${matchedEntries} matched, ${unmatchedEntries} unmatched`);
+          console.log(`[Billing] Gas calc: Consumption=${totalConsumptionKwh.toFixed(2)} kWh, Cost=£${totalCost.toFixed(2)}, Standing=£${(totalStandingCharge/100).toFixed(2)}`);
 
           gasEstimate = {
             consumption: totalConsumptionKwh,
