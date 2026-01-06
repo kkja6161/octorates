@@ -434,23 +434,6 @@ export default function HomeScreen() {
               </Pressable>
             </Link>
           </View>
-          {accountBalance !== null && (
-            <Pressable
-              style={styles.balanceCard}
-              onPress={() => router.push('/billing')}
-              accessibilityRole="button"
-            >
-              <Text style={styles.balanceCardTitle}>Account Balance</Text>
-              <Text
-                style={[
-                  styles.balanceAmount,
-                  accountBalance >= 0 ? styles.creditAmount : styles.debitAmount,
-                ]}
-              >
-                {formatCurrency(accountBalance)} {accountBalance >= 0 ? 'credit' : 'debit'}
-              </Text>
-            </Pressable>
-          )}
 
           <View style={styles.fuelTypesContainer}>
             <Pressable
@@ -708,6 +691,24 @@ export default function HomeScreen() {
                </View>
             );
           })()}
+          
+          {accountBalance !== null && (
+            <Pressable
+              style={styles.balanceCard}
+              onPress={() => router.push('/billing')}
+              accessibilityRole="button"
+            >
+              <Text style={styles.balanceCardTitle}>Account Balance</Text>
+              <Text
+                style={[
+                  styles.balanceAmount,
+                  accountBalance >= 0 ? styles.creditAmount : styles.debitAmount,
+                ]}
+              >
+                {formatCurrency(accountBalance)} {accountBalance >= 0 ? 'credit' : 'debit'}
+              </Text>
+            </Pressable>
+          )}
         </ScrollView>
       </View>
     </>
