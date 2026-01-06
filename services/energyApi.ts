@@ -749,6 +749,8 @@ export async function fetchConsumption(
   console.log(`[Energy API] ========== FETCH ${fuelType.toUpperCase()} CONSUMPTION ==========`);
   console.log(`[Energy API] MPAN/MPRN: ${mpanOrMprn}`);
   console.log(`[Energy API] Serial: ${serialNumber}`);
+  console.log(`[Energy API] Period From: ${periodFrom}`);
+  console.log(`[Energy API] Period To: ${periodTo}`);
   
   const cached = await getCachedConsumption(fuelType, mpanOrMprn);
   
@@ -767,11 +769,32 @@ export async function fetchConsumption(
     console.log(`[Energy API] Using ${allResults.length} cached entries`);
     console.log(`[Energy API] Last cached fetch: ${cached.lastFetchDate}`);
     
-    const lastCachedDate = new Date(cached.lastFetchDate);
-    lastCachedDate.setDate(lastCachedDate.getDate() + 1);
-    fetchFrom = lastCachedDate.toISOString();
-    
-    console.log(`[Energy API] Fetching incremental data from: ${fetchFrom}`);
+    // Check if the requested date range is covered by the cache
+    if (periodFrom) {
+      const requestedStart = new Date(periodFrom);
+      const oldestCachedEntry = allResults.length > 0 
+        ? new Date(allResults[allResults.length - 1].interval_start)
+        : new Date();
+      
+      // If requested start is before the oldest cached entry, we need to fetch earlier data
+      if (requestedStart < oldestCachedEntry) {
+        console.log(`[Energy API] Requested start (${requestedStart.toISOString()}) is before oldest cached entry (${oldestCachedEntry.toISOString()})`);
+        console.log(`[Energy API] Fetching earlier data from requested start`);
+        fetchFrom = periodFrom;
+      } else {
+        // Normal incremental fetch from last cached date
+        const lastCachedDate = new Date(cached.lastFetchDate);
+        lastCachedDate.setDate(lastCachedDate.getDate() + 1);
+        fetchFrom = lastCachedDate.toISOString();
+        console.log(`[Energy API] Fetching incremental data from: ${fetchFrom}`);
+      }
+    } else {
+      // Normal incremental fetch from last cached date
+      const lastCachedDate = new Date(cached.lastFetchDate);
+      lastCachedDate.setDate(lastCachedDate.getDate() + 1);
+      fetchFrom = lastCachedDate.toISOString();
+      console.log(`[Energy API] Fetching incremental data from: ${fetchFrom}`);
+    }
   }
   
   const params = new URLSearchParams();
