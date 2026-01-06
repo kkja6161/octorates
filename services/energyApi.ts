@@ -935,7 +935,7 @@ export async function fetchLastBillDate(
     const result = await response.json();
     
     if (result.errors) {
-      console.error('[Energy API] GraphQL Errors:', result.errors);
+      console.error('[Energy API] GraphQL Errors:', JSON.stringify(result.errors, null, 2));
       return null;
     }
     
