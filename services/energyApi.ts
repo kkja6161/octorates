@@ -898,11 +898,12 @@ export async function fetchLastBillDate(
   // Query to get the last bill's end date
   const query = `
     query AccountBills($accountNumber: String!) {
-      account(number: $accountNumber) {
+      account(accountNumber: $accountNumber) {
         bills(first: 12) {
           edges {
             node {
-              periodEndDate
+              toDate
+              fromDate
               issuedDate
             }
           }
@@ -946,16 +947,16 @@ export async function fetchLastBillDate(
       const sortedBills = bills
         .map((edge: any) => edge.node)
         .sort((a: any, b: any) => {
-          return new Date(b.periodEndDate).getTime() - new Date(a.periodEndDate).getTime();
+          return new Date(b.toDate).getTime() - new Date(a.toDate).getTime();
         });
         
       const lastBill = sortedBills[0];
       console.log('[Energy API] Found last bill:', lastBill);
       
-      // We want to return the periodEndDate of the last bill
+      // We want to return the toDate of the last bill
       // The new billing period starts the day after this date
-      if (lastBill.periodEndDate) {
-        return new Date(lastBill.periodEndDate);
+      if (lastBill.toDate) {
+        return new Date(lastBill.toDate);
       }
     } else {
       console.log('[Energy API] No bills found in GraphQL response');
