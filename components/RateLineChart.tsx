@@ -11,7 +11,7 @@ interface RateLineChartProps {
   allFutureRates?: ProcessedRate[];
 }
 
-export const RateLineChart = React.memo(({ rates, type, colors, getRateColor, allFutureRates }: RateLineChartProps) => {
+export const RateLineChart = React.memo(function RateLineChart({ rates, type, colors, getRateColor, allFutureRates }: RateLineChartProps) {
   const chartWidth = Dimensions.get('window').width - 72;
   const chartHeight = 200;
   const padding = { top: 20, bottom: 40, left: 40, right: 10 };
@@ -98,7 +98,7 @@ export const RateLineChart = React.memo(({ rates, type, colors, getRateColor, al
       getX, 
       getY 
     };
-  }, [rates, colors, type, getRateColor, allFutureRates]);
+  }, [rates, colors, type, getRateColor, allFutureRates, graphHeight, graphWidth, padding.left, padding.top]);
 
   if (!chartData) return null;
 

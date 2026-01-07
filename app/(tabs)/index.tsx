@@ -448,7 +448,7 @@ export default function HomeScreen() {
             const isDailyRate = !isElectricity || 
               (todayRates.length > 0 && todayRates.length <= 4) || 
               (todayRates.length > 0 && allRatesSamePrice(todayRates));
-            const isAgile = isElectricity && isAgileTariff(selectedElectricityTariff);
+            const isAgile = isElectricity && selectedElectricityTariff && isAgileTariff(selectedElectricityTariff);
 
             return todayRates.length > 0 ? (
               <>

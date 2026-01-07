@@ -109,11 +109,12 @@ export default function DailyDetailScreen() {
     const maxRateValue = rates.length > 0 ? Math.max(...rates) : 0;
     const minRateValue = rates.length > 0 ? Math.min(...rates) : 0;
     
-    const totalCost = halfHourlyData.reduce((sum, p) => sum + p.cost, 0);
-    const totalConsumption = halfHourlyData.reduce((sum, p) => sum + p.consumption, 0);
-    const avgRateValue = totalConsumption > 0 ? (totalCost / totalConsumption) * 100 : 0;
+    let avgRateValue = 0;
+    if (periodsWithRate.length > 0) {
+      const totalRate = periodsWithRate.reduce((sum, p) => sum + (p.rate || 0), 0);
+      avgRateValue = totalRate / periodsWithRate.length;
+    }
 
-    // For gas, use fixed scale 0-30; for electricity use dynamic scale
     const finalMaxRate = type === 'gas' ? 30 : maxRateValue;
     const finalMinRate = type === 'gas' ? 0 : minRateValue;
 
