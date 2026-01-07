@@ -9,7 +9,6 @@ import {
   LayoutAnimation,
   Platform,
   UIManager,
-  Dimensions,
 } from 'react-native';
 import { Stack, router, Link } from 'expo-router';
 import { Zap, Flame, Settings } from 'lucide-react-native';
@@ -375,6 +374,16 @@ export default function HomeScreen() {
       fontSize: 15,
       fontWeight: '700' as const,
     },
+    placeholderContainer: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 40,
+    },
+    placeholderTitle: {
+      fontSize: 16,
+      color: colors.text.secondary,
+      textAlign: 'center' as const,
+    },
   });
 
   return (
@@ -492,7 +501,7 @@ export default function HomeScreen() {
                     {isAgile ? (
                       <>
                         <Pressable style={styles.barGraphCard} onPress={() => router.push('/electricity-detail')}>
-                          <Text style={styles.sectionTitle}>Today's Rates</Text>
+                          <Text style={styles.sectionTitle}>Today&apos;s Rates</Text>
                           <RateLineChart 
                             rates={todayRates} 
                             type={expandedFuelType} 
@@ -504,7 +513,7 @@ export default function HomeScreen() {
 
                         {tomorrowRates.length > 0 && (
                           <Pressable style={styles.barGraphCard} onPress={() => router.push('/electricity-detail')}>
-                            <Text style={styles.sectionTitle}>Tomorrow's Rates</Text>
+                            <Text style={styles.sectionTitle}>Tomorrow&apos;s Rates</Text>
                             <RateLineChart 
                               rates={tomorrowRates} 
                               type={expandedFuelType} 
@@ -533,7 +542,7 @@ export default function HomeScreen() {
                     ) : (
                       <>
                         <View style={styles.barGraphCard}>
-                          <Text style={styles.sectionTitle}>Today's Rates</Text>
+                          <Text style={styles.sectionTitle}>Today&apos;s Rates</Text>
                           <ScrollView 
                             ref={todayRatesScrollRef}
                             horizontal 
@@ -576,7 +585,7 @@ export default function HomeScreen() {
 
                         {tomorrowRates.length > 0 && (
                           <View style={styles.barGraphCard}>
-                            <Text style={styles.sectionTitle}>Tomorrow's Rates</Text>
+                            <Text style={styles.sectionTitle}>Tomorrow&apos;s Rates</Text>
                             <ScrollView 
                               horizontal 
                               showsHorizontalScrollIndicator={false}
