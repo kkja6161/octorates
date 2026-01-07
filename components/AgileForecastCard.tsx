@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, Dimensions, ActivityIndicator } from 'react-native';
-import Svg, { Path, Line, Circle, Defs, LinearGradient, Stop, Text as SvgText } from 'react-native-svg';
+import Svg, { Path, Line, Defs, LinearGradient, Stop, Text as SvgText } from 'react-native-svg';
 import { useQuery } from '@tanstack/react-query';
 import { TrendingUp } from 'lucide-react-native';
 
@@ -289,7 +289,7 @@ export const AgileForecastCard = React.memo(function AgileForecastCard({
     );
   }
 
-  const { pathSegments, areaPath, minRate, range, days, getY } = chartData;
+  const { pathSegments, areaPath, minRate, range, days } = chartData;
 
   const avgPrice = forecastRates.reduce((sum, r) => sum + r.price, 0) / forecastRates.length;
   const minPrice = Math.min(...forecastRates.map(r => r.price));
@@ -404,22 +404,6 @@ export const AgileForecastCard = React.memo(function AgileForecastCard({
               </React.Fragment>
             );
           })}
-
-          {forecastRates.length > 0 && (() => {
-            const lastRate = forecastRates[forecastRates.length - 1];
-            const x = chartData.getX(forecastRates.length - 1);
-            const y = getY(lastRate.price);
-            return (
-              <Circle
-                cx={x}
-                cy={y}
-                r="5"
-                fill={getRateColor(lastRate.price)}
-                stroke={colors.surface}
-                strokeWidth="2"
-              />
-            );
-          })()}
         </Svg>
       </View>
 
