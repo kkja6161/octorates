@@ -1,8 +1,9 @@
 import createContextHook from '@nkzw/create-context-hook';
 import { useQuery } from '@tanstack/react-query';
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { fetchAccountBalance, fetchLastBillDate } from '@/services/energyApi';
+import { fetchAccountBalance } from '@/services/energyApi';
 import { EstimatedBilling } from '@/types/energy';
 import { useConsumption } from './ConsumptionProvider';
 
@@ -18,6 +19,51 @@ export const [BillingProvider, useBilling] = createContextHook(() => {
     isLoadingGas,
   } = useConsumption();
 
+  const [electricityBillingStartDate, setElectricityBillingStartDate] = useState<Date | null>(null);
+  const [gasBillingStartDate, setGasBillingStartDate] = useState<Date | null>(null);
+
+  useEffect(() => {
+    const loadBillingDates = async () => {
+      try {
+        const elecDate = await AsyncStorage.getItem('@billing:electricity_start_date');
+        const gasDate = await AsyncStorage.getItem('@billing:gas_start_date');
+        
+        if (elecDate) {
+          setElectricityBillingStartDate(new Date(elecDate));
+          console.log('[Billing] Loaded electricity billing start date:', elecDate);
+        }
+        if (gasDate) {
+          setGasBillingStartDate(new Date(gasDate));
+          console.log('[Billing] Loaded gas billing start date:', gasDate);
+        }
+      } catch (error) {
+        console.error('[Billing] Error loading billing dates:', error);
+      }
+    };
+    
+    loadBillingDates();
+  }, []);
+
+  const updateElectricityBillingStartDate = async (date: Date) => {
+    try {
+      await AsyncStorage.setItem('@billing:electricity_start_date', date.toISOString());
+      setElectricityBillingStartDate(date);
+      console.log('[Billing] Saved electricity billing start date:', date.toISOString());
+    } catch (error) {
+      console.error('[Billing] Error saving electricity billing date:', error);
+    }
+  };
+
+  const updateGasBillingStartDate = async (date: Date) => {
+    try {
+      await AsyncStorage.setItem('@billing:gas_start_date', date.toISOString());
+      setGasBillingStartDate(date);
+      console.log('[Billing] Saved gas billing start date:', date.toISOString());
+    } catch (error) {
+      console.error('[Billing] Error saving gas billing date:', error);
+    }
+  };
+
   const balanceQuery = useQuery({
     queryKey: ['account-balance', accountNumber, apiKey],
     queryFn: async () => {
@@ -28,23 +74,6 @@ export const [BillingProvider, useBilling] = createContextHook(() => {
         return await fetchAccountBalance(accountNumber, apiKey);
       } catch (error) {
         console.error('[Billing] Error fetching account balance:', error);
-        return null;
-      }
-    },
-    enabled: !!accountNumber && !!apiKey,
-    staleTime: 5 * 60 * 1000,
-  });
-
-  const lastBillDateQuery = useQuery({
-    queryKey: ['last-bill-date', accountNumber, apiKey],
-    queryFn: async () => {
-      if (!accountNumber || !apiKey) {
-        return null;
-      }
-      try {
-        return await fetchLastBillDate(accountNumber, apiKey);
-      } catch (error) {
-        console.error('[Billing] Error fetching last bill date:', error);
         return null;
       }
     },
@@ -68,10 +97,22 @@ export const [BillingProvider, useBilling] = createContextHook(() => {
       
       let totalConsumption = 0;
       let totalCost = 0;
+      let filteredDays = electricityDailyConsumption;
+
+      if (electricityBillingStartDate) {
+        console.log('[Billing] Filtering electricity data from billing start date:', electricityBillingStartDate.toISOString());
+        filteredDays = electricityDailyConsumption.filter(day => {
+          if (day.entries.length === 0) return false;
+          const dayDate = new Date(day.entries[0].interval_start);
+          return dayDate >= electricityBillingStartDate;
+        });
+        console.log(`[Billing] Filtered to ${filteredDays.length} days after billing start date`);
+      }
+
       let oldestDate: Date | null = null;
       let newestDate: Date | null = null;
 
-      electricityDailyConsumption.forEach(day => {
+      filteredDays.forEach(day => {
         if (day.entries.length > 0) {
           totalConsumption += day.totalConsumption;
           totalCost += day.cost;
@@ -86,7 +127,7 @@ export const [BillingProvider, useBilling] = createContextHook(() => {
         }
       });
 
-      console.log(`[Billing] Electricity: ${electricityDailyConsumption.length} days processed`);
+      console.log(`[Billing] Electricity: ${filteredDays.length} days processed`);
       console.log(`[Billing] Electricity: Total consumption = ${totalConsumption.toFixed(2)} kWh`);
       console.log(`[Billing] Electricity: Total cost (inc. standing charge) = £${totalCost.toFixed(2)}`);
       
@@ -96,8 +137,8 @@ export const [BillingProvider, useBilling] = createContextHook(() => {
         console.log(`[Billing] Electricity: Period from ${oldest.toISOString()} to ${newest.toISOString()}`);
       }
 
-      if (electricityDailyConsumption.length > 0 && totalConsumption > 0) {
-        const periodStart = oldestDate || new Date();
+      if (filteredDays.length > 0 && totalConsumption > 0) {
+        const periodStart = electricityBillingStartDate || oldestDate || new Date();
         const periodEnd = newestDate || new Date();
         
         electricityEstimate = {
@@ -107,7 +148,6 @@ export const [BillingProvider, useBilling] = createContextHook(() => {
           totalCost: totalCost,
           periodStart,
           periodEnd,
-          lastBillDate: lastBillDateQuery.data ? new Date(lastBillDateQuery.data) : periodStart,
         };
       }
     } else {
@@ -119,10 +159,22 @@ export const [BillingProvider, useBilling] = createContextHook(() => {
       
       let totalConsumption = 0;
       let totalCost = 0;
+      let filteredDays = gasDailyConsumption;
+
+      if (gasBillingStartDate) {
+        console.log('[Billing] Filtering gas data from billing start date:', gasBillingStartDate.toISOString());
+        filteredDays = gasDailyConsumption.filter(day => {
+          if (day.entries.length === 0) return false;
+          const dayDate = new Date(day.entries[0].interval_start);
+          return dayDate >= gasBillingStartDate;
+        });
+        console.log(`[Billing] Filtered to ${filteredDays.length} days after billing start date`);
+      }
+
       let oldestDate: Date | null = null;
       let newestDate: Date | null = null;
 
-      gasDailyConsumption.forEach(day => {
+      filteredDays.forEach(day => {
         if (day.entries.length > 0) {
           totalConsumption += day.totalConsumption;
           totalCost += day.cost;
@@ -137,7 +189,7 @@ export const [BillingProvider, useBilling] = createContextHook(() => {
         }
       });
 
-      console.log(`[Billing] Gas: ${gasDailyConsumption.length} days processed`);
+      console.log(`[Billing] Gas: ${filteredDays.length} days processed`);
       console.log(`[Billing] Gas: Total consumption = ${totalConsumption.toFixed(2)} kWh`);
       console.log(`[Billing] Gas: Total cost (inc. standing charge) = £${totalCost.toFixed(2)}`);
       
@@ -147,8 +199,8 @@ export const [BillingProvider, useBilling] = createContextHook(() => {
         console.log(`[Billing] Gas: Period from ${oldest.toISOString()} to ${newest.toISOString()}`);
       }
 
-      if (gasDailyConsumption.length > 0 && totalConsumption > 0) {
-        const periodStart = oldestDate || new Date();
+      if (filteredDays.length > 0 && totalConsumption > 0) {
+        const periodStart = gasBillingStartDate || oldestDate || new Date();
         const periodEnd = newestDate || new Date();
         
         gasEstimate = {
@@ -158,7 +210,6 @@ export const [BillingProvider, useBilling] = createContextHook(() => {
           totalCost: totalCost,
           periodStart,
           periodEnd,
-          lastBillDate: lastBillDateQuery.data ? new Date(lastBillDateQuery.data) : periodStart,
         };
       }
     } else if (showGas) {
@@ -176,7 +227,7 @@ export const [BillingProvider, useBilling] = createContextHook(() => {
       gas: gasEstimate,
       totalEstimatedCost,
     };
-  }, [accountData, electricityDailyConsumption, gasDailyConsumption, showGas, lastBillDateQuery.data]);
+  }, [accountData, electricityDailyConsumption, gasDailyConsumption, showGas, electricityBillingStartDate, gasBillingStartDate]);
 
   const accountBalance = useMemo(() => {
     return balanceQuery.data?.balance ?? null;
@@ -186,7 +237,6 @@ export const [BillingProvider, useBilling] = createContextHook(() => {
 
   const refetch = () => {
     balanceQuery.refetch();
-    lastBillDateQuery.refetch();
   };
 
   return {
@@ -194,5 +244,9 @@ export const [BillingProvider, useBilling] = createContextHook(() => {
     estimatedBilling,
     isLoading,
     refetch,
+    electricityBillingStartDate,
+    gasBillingStartDate,
+    updateElectricityBillingStartDate,
+    updateGasBillingStartDate,
   };
 });

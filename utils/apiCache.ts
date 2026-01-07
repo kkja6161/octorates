@@ -30,17 +30,11 @@ interface CachedBalance {
   timestamp: number;
 }
 
-interface CachedLastBillDate {
-  date: string;
-  timestamp: number;
-}
-
 const CACHE_KEYS = {
   CONSUMPTION: (fuelType: string, mpanOrMprn: string) => `${CACHE_PREFIX}consumption:${fuelType}:${mpanOrMprn}`,
   RATES: (fuelType: string, productCode: string, region: string) => `${CACHE_PREFIX}rates:${fuelType}:${productCode}:${region}`,
   ACCOUNT: (accountNumber: string) => `${CACHE_PREFIX}account:${accountNumber}`,
   BALANCE: (accountNumber: string) => `${CACHE_PREFIX}balance:${accountNumber}`,
-  LAST_BILL_DATE: (accountNumber: string) => `${CACHE_PREFIX}last_bill:${accountNumber}`,
   COMPARISON_RATES: (fuelType: string, productCode: string, region: string) => `${CACHE_PREFIX}comparison_rates:${fuelType}:${productCode}:${region}`,
   STANDING_CHARGE: (fuelType: string, productCode: string, region: string) => `${CACHE_PREFIX}standing_charge:${fuelType}:${productCode}:${region}`,
 };
@@ -50,7 +44,6 @@ const CACHE_DURATIONS = {
   RATES: 30 * 60 * 1000, // 30 minutes
   ACCOUNT: 24 * 60 * 60 * 1000, // 24 hours
   BALANCE: 5 * 60 * 1000, // 5 minutes
-  LAST_BILL_DATE: 60 * 60 * 1000, // 1 hour
   STANDING_CHARGE: 24 * 60 * 60 * 1000, // 24 hours
 };
 
@@ -247,47 +240,6 @@ export async function setCachedBalance(accountNumber: string, balance: number): 
     console.log('[Cache] Cached balance');
   } catch (error) {
     console.error('[Cache] Error writing balance cache:', error);
-  }
-}
-
-export async function getCachedLastBillDate(accountNumber: string): Promise<CachedLastBillDate | null> {
-  try {
-    const key = CACHE_KEYS.LAST_BILL_DATE(accountNumber);
-    const cached = await AsyncStorage.getItem(key);
-    
-    if (!cached) {
-      console.log('[Cache] No cached last bill date found');
-      return null;
-    }
-    
-    const parsed: CachedLastBillDate = JSON.parse(cached);
-    const age = Date.now() - parsed.timestamp;
-    
-    if (age > CACHE_DURATIONS.LAST_BILL_DATE) {
-      console.log(`[Cache] Last bill date cache expired (${Math.round(age / 1000 / 60)}min old)`);
-      return null;
-    }
-    
-    console.log(`[Cache] Using cached last bill date (${Math.round(age / 1000 / 60)}min old)`);
-    return parsed;
-  } catch (error) {
-    console.error('[Cache] Error reading last bill date cache:', error);
-    return null;
-  }
-}
-
-export async function setCachedLastBillDate(accountNumber: string, date: Date): Promise<void> {
-  try {
-    const key = CACHE_KEYS.LAST_BILL_DATE(accountNumber);
-    const cacheData: CachedLastBillDate = {
-      date: date.toISOString(),
-      timestamp: Date.now(),
-    };
-    
-    await AsyncStorage.setItem(key, JSON.stringify(cacheData));
-    console.log('[Cache] Cached last bill date');
-  } catch (error) {
-    console.error('[Cache] Error writing last bill date cache:', error);
   }
 }
 

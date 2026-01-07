@@ -283,7 +283,6 @@ export interface EstimatedBilling {
     totalCost: number;
     periodStart: Date;
     periodEnd: Date;
-    lastBillDate: Date | null;
   } | null;
   gas: {
     consumption: number;
@@ -292,7 +291,6 @@ export interface EstimatedBilling {
     totalCost: number;
     periodStart: Date;
     periodEnd: Date;
-    lastBillDate: Date | null;
   } | null;
   totalEstimatedCost: number;
 }

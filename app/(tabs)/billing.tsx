@@ -1,13 +1,17 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   RefreshControl,
+  TouchableOpacity,
+  Modal,
+  Platform,
 } from 'react-native';
 import { Stack } from 'expo-router';
-import { Zap, Flame } from 'lucide-react-native';
+import { Zap, Flame, Calendar } from 'lucide-react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 import { useBilling } from '@/providers/BillingProvider';
 import { useConsumption } from '@/providers/ConsumptionProvider';
@@ -15,10 +19,24 @@ import { useColors } from '@/constants/colors';
 import { useTheme } from '@/providers/ThemeProvider';
 
 export default function BillingScreen() {
-  const { accountBalance, estimatedBilling, isLoading, refetch } = useBilling();
+  const { 
+    accountBalance, 
+    estimatedBilling, 
+    isLoading, 
+    refetch,
+    electricityBillingStartDate,
+    gasBillingStartDate,
+    updateElectricityBillingStartDate,
+    updateGasBillingStartDate,
+  } = useBilling();
   const { showGas } = useConsumption();
   const { isDark } = useTheme();
   const colors = useColors(isDark);
+
+  const [showElectricityDatePicker, setShowElectricityDatePicker] = useState(false);
+  const [showGasDatePicker, setShowGasDatePicker] = useState(false);
+  const [tempElectricityDate, setTempElectricityDate] = useState<Date>(new Date());
+  const [tempGasDate, setTempGasDate] = useState<Date>(new Date());
 
   const formatCurrency = (amount: number) => {
     return `£${Math.abs(amount).toFixed(2)}`;
@@ -150,6 +168,69 @@ export default function BillingScreen() {
       color: colors.text.secondary,
       textAlign: 'center' as const,
       fontStyle: 'italic' as const,
+    },
+    dateButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      backgroundColor: colors.background,
+      padding: 12,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    dateButtonText: {
+      fontSize: 14,
+      color: colors.text.primary,
+      fontWeight: '500' as const,
+      flex: 1,
+    },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: 20,
+    },
+    modalContent: {
+      backgroundColor: colors.surface,
+      borderRadius: 16,
+      padding: 20,
+      width: '100%',
+      maxWidth: 400,
+      gap: 16,
+    },
+    modalTitle: {
+      fontSize: 18,
+      fontWeight: '700' as const,
+      color: colors.text.primary,
+      textAlign: 'center' as const,
+    },
+    modalButtons: {
+      flexDirection: 'row',
+      gap: 12,
+    },
+    modalButton: {
+      flex: 1,
+      padding: 14,
+      borderRadius: 8,
+      alignItems: 'center',
+    },
+    modalButtonCancel: {
+      backgroundColor: colors.background,
+    },
+    modalButtonConfirm: {
+      backgroundColor: colors.primary,
+    },
+    modalButtonText: {
+      fontSize: 16,
+      fontWeight: '600' as const,
+    },
+    modalButtonTextCancel: {
+      color: colors.text.secondary,
+    },
+    modalButtonTextConfirm: {
+      color: '#FFFFFF',
     },
   });
 
@@ -285,9 +366,50 @@ export default function BillingScreen() {
                 </View>
 
                 {estimatedBilling.electricity && (
-                  <Text style={styles.periodText}>
-                    Billing period: {formatDate(estimatedBilling.electricity.periodStart)} - {formatDate(estimatedBilling.electricity.periodEnd)}
-                  </Text>
+                  <>
+                    <View style={styles.divider} />
+                    <View style={styles.fuelCard}>
+                      <Text style={[styles.estimateLabel, { marginBottom: 8 }]}>Electricity Billing Start Date</Text>
+                      <TouchableOpacity
+                        style={styles.dateButton}
+                        onPress={() => {
+                          setTempElectricityDate(electricityBillingStartDate || new Date());
+                          setShowElectricityDatePicker(true);
+                        }}
+                      >
+                        <Calendar size={20} color={colors.primary} />
+                        <Text style={styles.dateButtonText}>
+                          {electricityBillingStartDate 
+                            ? formatDate(electricityBillingStartDate)
+                            : 'Set billing start date'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    {showGas && estimatedBilling.gas && (
+                      <View style={styles.fuelCard}>
+                        <Text style={[styles.estimateLabel, { marginBottom: 8 }]}>Gas Billing Start Date</Text>
+                        <TouchableOpacity
+                          style={styles.dateButton}
+                          onPress={() => {
+                            setTempGasDate(gasBillingStartDate || new Date());
+                            setShowGasDatePicker(true);
+                          }}
+                        >
+                          <Calendar size={20} color={colors.gasColor} />
+                          <Text style={styles.dateButtonText}>
+                            {gasBillingStartDate 
+                              ? formatDate(gasBillingStartDate)
+                              : 'Set billing start date'}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+
+                    <Text style={styles.periodText}>
+                      Current period: {formatDate(estimatedBilling.electricity.periodStart)} - {formatDate(estimatedBilling.electricity.periodEnd)}
+                    </Text>
+                  </>
                 )}
               </View>
             </>
@@ -301,6 +423,122 @@ export default function BillingScreen() {
             </View>
           )}
         </ScrollView>
+
+        {Platform.OS === 'ios' ? (
+          <>
+            <Modal
+              visible={showElectricityDatePicker}
+              transparent
+              animationType="fade"
+              onRequestClose={() => setShowElectricityDatePicker(false)}
+            >
+              <View style={styles.modalOverlay}>
+                <View style={styles.modalContent}>
+                  <Text style={styles.modalTitle}>Select Billing Start Date</Text>
+                  <DateTimePicker
+                    value={tempElectricityDate}
+                    mode="date"
+                    display="spinner"
+                    onChange={(event, date) => {
+                      if (date) setTempElectricityDate(date);
+                    }}
+                    maximumDate={new Date()}
+                    textColor={colors.text.primary}
+                  />
+                  <View style={styles.modalButtons}>
+                    <TouchableOpacity
+                      style={[styles.modalButton, styles.modalButtonCancel]}
+                      onPress={() => setShowElectricityDatePicker(false)}
+                    >
+                      <Text style={[styles.modalButtonText, styles.modalButtonTextCancel]}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.modalButton, styles.modalButtonConfirm]}
+                      onPress={() => {
+                        updateElectricityBillingStartDate(tempElectricityDate);
+                        setShowElectricityDatePicker(false);
+                      }}
+                    >
+                      <Text style={[styles.modalButtonText, styles.modalButtonTextConfirm]}>Confirm</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+            </Modal>
+
+            <Modal
+              visible={showGasDatePicker}
+              transparent
+              animationType="fade"
+              onRequestClose={() => setShowGasDatePicker(false)}
+            >
+              <View style={styles.modalOverlay}>
+                <View style={styles.modalContent}>
+                  <Text style={styles.modalTitle}>Select Billing Start Date</Text>
+                  <DateTimePicker
+                    value={tempGasDate}
+                    mode="date"
+                    display="spinner"
+                    onChange={(event, date) => {
+                      if (date) setTempGasDate(date);
+                    }}
+                    maximumDate={new Date()}
+                    textColor={colors.text.primary}
+                  />
+                  <View style={styles.modalButtons}>
+                    <TouchableOpacity
+                      style={[styles.modalButton, styles.modalButtonCancel]}
+                      onPress={() => setShowGasDatePicker(false)}
+                    >
+                      <Text style={[styles.modalButtonText, styles.modalButtonTextCancel]}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.modalButton, styles.modalButtonConfirm]}
+                      onPress={() => {
+                        updateGasBillingStartDate(tempGasDate);
+                        setShowGasDatePicker(false);
+                      }}
+                    >
+                      <Text style={[styles.modalButtonText, styles.modalButtonTextConfirm]}>Confirm</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+            </Modal>
+          </>
+        ) : (
+          <>
+            {showElectricityDatePicker && (
+              <DateTimePicker
+                value={tempElectricityDate}
+                mode="date"
+                display="default"
+                onChange={(event, date) => {
+                  setShowElectricityDatePicker(false);
+                  if (date && event.type === 'set') {
+                    updateElectricityBillingStartDate(date);
+                  }
+                }}
+                maximumDate={new Date()}
+              />
+            )}
+
+            {showGasDatePicker && (
+              <DateTimePicker
+                value={tempGasDate}
+                mode="date"
+                display="default"
+                onChange={(event, date) => {
+                  setShowGasDatePicker(false);
+                  if (date && event.type === 'set') {
+                    updateGasBillingStartDate(date);
+                  }
+                }}
+                maximumDate={new Date()}
+              />
+            )}
+          </>
+        )}
       </View>
     </>
   );
