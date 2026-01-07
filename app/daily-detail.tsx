@@ -346,10 +346,11 @@ export default function DailyDetailScreen() {
             </View>
           )}
           <View style={styles.chartLabels}>
-            <Text style={styles.chartLabel}>00</Text>
-            <Text style={styles.chartLabel}>06</Text>
-            <Text style={styles.chartLabel}>12</Text>
-            <Text style={styles.chartLabel}>18</Text>
+            <Text style={styles.chartLabel}>00:00</Text>
+            <Text style={styles.chartLabel}>06:00</Text>
+            <Text style={styles.chartLabel}>12:00</Text>
+            <Text style={styles.chartLabel}>18:00</Text>
+            <Text style={styles.chartLabel}>23:30</Text>
           </View>
         </View>
 
@@ -388,10 +389,11 @@ export default function DailyDetailScreen() {
             </View>
           )}
           <View style={styles.chartLabels}>
-            <Text style={styles.chartLabel}>00</Text>
-            <Text style={styles.chartLabel}>06</Text>
-            <Text style={styles.chartLabel}>12</Text>
-            <Text style={styles.chartLabel}>18</Text>
+            <Text style={styles.chartLabel}>00:00</Text>
+            <Text style={styles.chartLabel}>06:00</Text>
+            <Text style={styles.chartLabel}>12:00</Text>
+            <Text style={styles.chartLabel}>18:00</Text>
+            <Text style={styles.chartLabel}>23:30</Text>
           </View>
         </View>
 
