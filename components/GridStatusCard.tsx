@@ -98,7 +98,7 @@ export function GridStatusCard({ colors, isDark }: GridStatusCardProps) {
       flex: 1,
     },
     gridLabel: {
-      fontSize: 12,
+      fontSize: 14,
       fontWeight: '600' as const,
       color: colors.text.secondary,
       letterSpacing: 0.5,
@@ -115,7 +115,7 @@ export function GridStatusCard({ colors, isDark }: GridStatusCardProps) {
       gap: 4,
     },
     statValue: {
-      fontSize: 13,
+      fontSize: 15,
       fontWeight: '600' as const,
       color: colors.text.primary,
     },
@@ -126,7 +126,7 @@ export function GridStatusCard({ colors, isDark }: GridStatusCardProps) {
       backgroundColor: intensityColor.bg,
     },
     co2Text: {
-      fontSize: 11,
+      fontSize: 13,
       fontWeight: '700' as const,
       color: intensityColor.text,
     },
@@ -140,7 +140,7 @@ export function GridStatusCard({ colors, isDark }: GridStatusCardProps) {
       borderTopColor: colors.border,
     },
     sectionTitle: {
-      fontSize: 11,
+      fontSize: 13,
       fontWeight: '600' as const,
       color: colors.text.secondary,
       marginTop: 10,
@@ -163,11 +163,11 @@ export function GridStatusCard({ colors, isDark }: GridStatusCardProps) {
       gap: 4,
     },
     mixFuel: {
-      fontSize: 11,
+      fontSize: 13,
       color: colors.text.secondary,
     },
     mixPerc: {
-      fontSize: 11,
+      fontSize: 13,
       fontWeight: '600' as const,
       color: colors.text.primary,
     },
@@ -184,12 +184,12 @@ export function GridStatusCard({ colors, isDark }: GridStatusCardProps) {
       flex: 1,
     },
     summaryLabel: {
-      fontSize: 10,
+      fontSize: 12,
       color: colors.text.secondary,
       marginBottom: 2,
     },
     summaryValue: {
-      fontSize: 14,
+      fontSize: 16,
       fontWeight: '700' as const,
     },
     renewableValue: {
@@ -207,15 +207,15 @@ export function GridStatusCard({ colors, isDark }: GridStatusCardProps) {
     <View style={styles.container}>
       <Pressable style={styles.header} onPress={toggleExpanded}>
         <View style={styles.headerLeft}>
-          <Activity size={14} color={colors.text.secondary} />
+          <Activity size={16} color={colors.text.secondary} />
           <Text style={styles.gridLabel}>UK GRID</Text>
           <View style={styles.statsRow}>
             <View style={styles.statItem}>
-              <Leaf size={12} color="#10B981" />
+              <Leaf size={14} color="#10B981" />
               <Text style={styles.statValue}>{gridStatus.renewablePercentage}%</Text>
             </View>
             <View style={styles.statItem}>
-              <Factory size={12} color="#6B7280" />
+              <Factory size={14} color="#6B7280" />
               <Text style={styles.statValue}>{gridStatus.nonRenewablePercentage}%</Text>
             </View>
           </View>
@@ -225,9 +225,9 @@ export function GridStatusCard({ colors, isDark }: GridStatusCardProps) {
         </View>
         <View style={styles.expandButton}>
           {expanded ? (
-            <ChevronUp size={16} color={colors.text.secondary} />
+            <ChevronUp size={18} color={colors.text.secondary} />
           ) : (
-            <ChevronDown size={16} color={colors.text.secondary} />
+            <ChevronDown size={18} color={colors.text.secondary} />
           )}
         </View>
       </Pressable>
