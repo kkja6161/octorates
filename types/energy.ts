@@ -276,3 +276,26 @@ export interface GridStatusData {
   generationMix: GenerationMixItem[];
   lastUpdated: Date;
 }
+
+// Agile Predict API Types
+export interface AgilePredictPrice {
+  date_time: string;
+  agile_pred: number;
+  agile_pred_low?: number;
+  agile_pred_high?: number;
+}
+
+export interface AgilePredictForecast {
+  name: string;
+  created_at: string;
+  prices: AgilePredictPrice[];
+}
+
+export interface ProcessedForecastRate {
+  price: number;
+  lowPrice?: number;
+  highPrice?: number;
+  time: string;
+  date: string;
+  validFrom: Date;
+}

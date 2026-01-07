@@ -1,4 +1,4 @@
-import { EnergyRatesResponse, ProcessedRate, ProductsResponse, TariffInfo, ConsumptionResponse, StandingChargesResponse, AccountResponse, ProcessedAccountData, ProcessedTariffAgreement, CarbonIntensityResponse, GenerationMixResponse, GridStatusData } from '@/types/energy';
+import { EnergyRatesResponse, ProcessedRate, ProductsResponse, TariffInfo, ConsumptionResponse, StandingChargesResponse, AccountResponse, ProcessedAccountData, ProcessedTariffAgreement, CarbonIntensityResponse, GenerationMixResponse, GridStatusData, AgilePredictForecast, ProcessedForecastRate } from '@/types/energy';
 import { DEFAULT_GSP_REGION, buildProductListUrl, buildFlexibleTariffUrl, buildGasTrackerTariffUrl, OCTOPUS_API_BASE, PRODUCT_CODE_MAPPING } from '@/constants/octopus';
 
 function normalizeProductCode(productCode: string): string {
@@ -852,5 +852,56 @@ export async function fetchGridStatus(): Promise<GridStatusData | null> {
   } catch (error) {
     console.error('[Energy API] Error fetching grid status:', error);
     return null;
+  }
+}
+
+const AGILE_PREDICT_API = 'https://agilepredict.com/api';
+
+export async function fetchAgilePrediction(
+  region: string = 'C',
+  days: number = 5
+): Promise<ProcessedForecastRate[]> {
+  console.log('[Energy API] ========== FETCH AGILE PREDICTION ==========');
+  console.log(`[Energy API] Region: ${region}, Days: ${days}`);
+  
+  try {
+    const url = `${AGILE_PREDICT_API}/${region}?days=${days}&forecast_count=1&high_low=True`;
+    console.log('[Energy API] Agile Predict URL:', url);
+    
+    const response = await fetch(url);
+    
+    if (!response.ok) {
+      console.error('[Energy API] Agile Predict API error:', response.status);
+      return [];
+    }
+    
+    const data: AgilePredictForecast[] = await response.json();
+    
+    if (!data || data.length === 0 || !data[0].prices) {
+      console.error('[Energy API] Invalid Agile Predict response');
+      return [];
+    }
+    
+    const forecast = data[0];
+    console.log('[Energy API] Agile Predict forecast:', forecast.name, 'created:', forecast.created_at);
+    console.log('[Energy API] Agile Predict prices count:', forecast.prices.length);
+    
+    const processed: ProcessedForecastRate[] = forecast.prices.map(price => {
+      const validFrom = new Date(price.date_time);
+      return {
+        price: price.agile_pred,
+        lowPrice: price.agile_pred_low,
+        highPrice: price.agile_pred_high,
+        time: validFrom.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+        date: validFrom.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }),
+        validFrom,
+      };
+    }).sort((a, b) => a.validFrom.getTime() - b.validFrom.getTime());
+    
+    console.log('[Energy API] Processed forecast rates:', processed.length);
+    return processed;
+  } catch (error) {
+    console.error('[Energy API] Error fetching Agile Predict:', error);
+    return [];
   }
 }

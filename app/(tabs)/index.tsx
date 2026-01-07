@@ -24,6 +24,7 @@ import { getTariffDisplayName } from '@/utils/tariffNames';
 import { useTheme } from '@/providers/ThemeProvider';
 import { RateLineChart } from '@/components/RateLineChart';
 import { GridStatusCard } from '@/components/GridStatusCard';
+import { AgileForecastCard } from '@/components/AgileForecastCard';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -43,6 +44,7 @@ export default function HomeScreen() {
     electricityThresholds,
     gasThresholds,
     selectedElectricityTariff,
+    selectedRegion,
   } = useEnergyRates();
   
   const { showGas } = useConsumption();
@@ -534,6 +536,15 @@ export default function HomeScreen() {
                       </Text>
                     </View>
                   </View>
+                )}
+
+                {isAgile && (
+                  <AgileForecastCard
+                    region={selectedRegion}
+                    colors={colors}
+                    isDark={isDark}
+                    thresholds={electricityThresholds}
+                  />
                 )}
               </>
             ) : (
