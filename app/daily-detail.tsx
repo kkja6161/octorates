@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -19,6 +19,8 @@ import Colors, { useColors } from '@/constants/colors';
 import { useTheme } from '@/providers/ThemeProvider';
 import { getTariffDisplayName } from '@/utils/tariffNames';
 import { ConsumptionEntryWithRate } from '@/types/energy';
+import { getRateThresholdLevel, getThresholdColor } from '@/utils/thresholds';
+import { useEnergyRates } from '@/providers/EnergyRatesProvider';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CHART_HORIZONTAL_PADDING = 32;
@@ -57,6 +59,7 @@ export default function DailyDetailScreen() {
   const { comparisonElectricityTariffName, comparisonGasTariffName } = useComparisonRate();
   const { isDark } = useTheme();
   const colors = useColors(isDark);
+  const { electricityThresholds, gasThresholds } = useEnergyRates();
 
   const dailyData = useMemo(() => {
     const consumption = type === 'electricity' ? electricityDailyConsumption : gasDailyConsumption;
@@ -126,6 +129,12 @@ export default function DailyDetailScreen() {
     return type === 'electricity' ? Colors.primary : '#f59e0b';
   };
 
+  const getRateColor = useCallback((price: number) => {
+    const thresholds = type === 'electricity' ? electricityThresholds : gasThresholds;
+    const level = getRateThresholdLevel(price, thresholds);
+    return getThresholdColor(level, isDark);
+  }, [type, electricityThresholds, gasThresholds, isDark]);
+
   const cumulativeCosts = useMemo(() => {
     let currentCumulative = 0;
     let comparisonCumulative = 0;
@@ -175,17 +184,15 @@ export default function DailyDetailScreen() {
       return { x, y, rate };
     });
 
-    let ratePath = '';
-    rateLine.forEach((point, index) => {
-      if (index === 0) {
-        ratePath = `M ${point.x} ${point.y}`;
-      } else {
-        ratePath += ` L ${point.x} ${point.y}`;
-      }
+    const rateSegments = rateLine.slice(0, -1).map((point, index) => {
+      const nextPoint = rateLine[index + 1];
+      const path = `M ${point.x} ${point.y} L ${nextPoint.x} ${nextPoint.y}`;
+      const color = getRateColor(point.rate);
+      return { path, color };
     });
     
-    return { bars, ratePath, padding, chartHeight, chartWidth };
-  }, [halfHourlyData, maxRate, minRate, maxConsumption]);
+    return { bars, rateSegments, padding, chartHeight, chartWidth };
+  }, [halfHourlyData, maxRate, minRate, maxConsumption, getRateColor]);
 
   const cumulativeChartData = useMemo(() => {
     if (cumulativeCosts.length === 0 || maxCumulativeCost === 0) return null;
@@ -316,8 +323,8 @@ export default function DailyDetailScreen() {
               <Text style={styles.chartLegendText}>Usage (kWh)</Text>
             </View>
             <View style={styles.chartLegendItem}>
-              <View style={[styles.chartLegendLine, { backgroundColor: '#ef4444' }]} />
-              <Text style={styles.chartLegendText}>Rate (p)</Text>
+              <View style={[styles.chartLegendLine, { backgroundColor: colors.text.secondary }]} />
+              <Text style={styles.chartLegendText}>Rate (threshold colors)</Text>
             </View>
           </View>
           {usageChartData && (
@@ -334,14 +341,17 @@ export default function DailyDetailScreen() {
                     opacity={0.8}
                   />
                 ))}
-                <Path
-                  d={usageChartData.ratePath}
-                  stroke="#ef4444"
-                  strokeWidth="3"
-                  fill="none"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
+                {usageChartData.rateSegments.map((segment, index) => (
+                  <Path
+                    key={index}
+                    d={segment.path}
+                    stroke={segment.color}
+                    strokeWidth="3"
+                    fill="none"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                ))}
               </Svg>
             </View>
           )}
