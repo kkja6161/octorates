@@ -11,7 +11,7 @@ import { Stack, useLocalSearchParams, router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ArrowLeft, Zap, Flame, Clock } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Path, Rect, Line, Text as SvgText } from 'react-native-svg';
+import Svg, { Path, Rect } from 'react-native-svg';
 
 import { useConsumption } from '@/providers/ConsumptionProvider';
 import { useComparisonRate } from '@/hooks/useComparisonRate';
@@ -153,21 +153,20 @@ export default function DailyDetailScreen() {
     
     const chartHeight = 120;
     const chartWidth = SCREEN_WIDTH - CHART_HORIZONTAL_PADDING - 32;
-    const padding = { top: 10, bottom: 10, left: 40, right: 10 };
+    const padding = { top: 10, bottom: 10, left: 0, right: 0 };
     const graphHeight = chartHeight - padding.top - padding.bottom;
-    const graphWidth = chartWidth - padding.left - padding.right;
     const barGap = 1;
     const totalBars = halfHourlyData.length;
-    const barWidth = (graphWidth - (totalBars - 1) * barGap) / totalBars;
+    const barWidth = (chartWidth - (totalBars - 1) * barGap) / totalBars;
     
     const bars = halfHourlyData.map((period, index) => {
-      const x = padding.left + index * (barWidth + barGap);
+      const x = index * (barWidth + barGap);
       const barHeight = maxConsumption > 0 ? (period.consumption / maxConsumption) * graphHeight : 0;
       return { x, height: Math.max(2, barHeight), width: barWidth };
     });
 
     const rateLine = halfHourlyData.map((period, index) => {
-      const x = padding.left + index * (barWidth + barGap) + barWidth / 2;
+      const x = index * (barWidth + barGap) + barWidth / 2;
       const rate = period.rate || 0;
       const normalizedRate = maxRate > minRate 
         ? (rate - minRate) / (maxRate - minRate) 
@@ -185,7 +184,7 @@ export default function DailyDetailScreen() {
       }
     });
     
-    return { bars, ratePath, padding, chartHeight, chartWidth, graphHeight };
+    return { bars, ratePath, padding, chartHeight, chartWidth };
   }, [halfHourlyData, maxRate, minRate, maxConsumption]);
 
   const cumulativeChartData = useMemo(() => {
@@ -193,16 +192,15 @@ export default function DailyDetailScreen() {
     
     const chartHeight = 120;
     const chartWidth = SCREEN_WIDTH - CHART_HORIZONTAL_PADDING - 32;
-    const padding = { top: 10, bottom: 10, left: 40, right: 10 };
+    const padding = { top: 10, bottom: 10, left: 0, right: 0 };
     const graphHeight = chartHeight - padding.top - padding.bottom;
-    const graphWidth = chartWidth - padding.left - padding.right;
-    const pointSpacing = graphWidth / (cumulativeCosts.length - 1 || 1);
+    const pointSpacing = chartWidth / (cumulativeCosts.length - 1 || 1);
     
     let currentPath = '';
     let comparisonPath = '';
 
     cumulativeCosts.forEach((cost, index) => {
-      const x = padding.left + index * pointSpacing;
+      const x = index * pointSpacing;
       const currentNormalized = cost.currentCumulative / maxCumulativeCost;
       const comparisonNormalized = cost.comparisonCumulative / maxCumulativeCost;
       const currentY = padding.top + (1 - currentNormalized) * graphHeight;
@@ -217,7 +215,7 @@ export default function DailyDetailScreen() {
       }
     });
 
-    return { currentPath, comparisonPath, chartHeight, chartWidth, padding, graphHeight, graphWidth };
+    return { currentPath, comparisonPath, chartHeight, chartWidth, padding };
   }, [cumulativeCosts, maxCumulativeCost]);
 
   const formatPrice = (price: number): string => `£${price.toFixed(4)}`;
@@ -325,32 +323,6 @@ export default function DailyDetailScreen() {
           {usageChartData && (
             <View style={styles.chartContainer}>
               <Svg width={usageChartData.chartWidth} height={usageChartData.chartHeight}>
-                {[0, 0.25, 0.5, 0.75, 1].map((fraction, i) => {
-                  const y = usageChartData.padding.top + usageChartData.graphHeight - fraction * usageChartData.graphHeight;
-                  const rateValue = minRate + fraction * (maxRate - minRate);
-                  return (
-                    <React.Fragment key={i}>
-                      <Line
-                        x1={usageChartData.padding.left}
-                        y1={y}
-                        x2={usageChartData.padding.left + (usageChartData.chartWidth - usageChartData.padding.left - usageChartData.padding.right)}
-                        y2={y}
-                        stroke="#e1e1e1"
-                        strokeWidth="1"
-                        strokeDasharray="5,5"
-                      />
-                      <SvgText
-                        x={0}
-                        y={y + 4}
-                        fontSize="11"
-                        fill="#888"
-                        fontWeight="500"
-                      >
-                        {rateValue.toFixed(1)}
-                      </SvgText>
-                    </React.Fragment>
-                  );
-                })}
                 {usageChartData.bars.map((bar, index) => (
                   <Rect
                     key={index}
@@ -396,32 +368,6 @@ export default function DailyDetailScreen() {
           {cumulativeChartData && (
             <View style={styles.cumulativeCostContainer}>
               <Svg width={cumulativeChartData.chartWidth} height={cumulativeChartData.chartHeight}>
-                {[0, 0.25, 0.5, 0.75, 1].map((fraction, i) => {
-                  const y = cumulativeChartData.padding.top + cumulativeChartData.graphHeight - fraction * cumulativeChartData.graphHeight;
-                  const costValue = fraction * maxCumulativeCost;
-                  return (
-                    <React.Fragment key={i}>
-                      <Line
-                        x1={cumulativeChartData.padding.left}
-                        y1={y}
-                        x2={cumulativeChartData.padding.left + cumulativeChartData.graphWidth}
-                        y2={y}
-                        stroke="#e1e1e1"
-                        strokeWidth="1"
-                        strokeDasharray="5,5"
-                      />
-                      <SvgText
-                        x={0}
-                        y={y + 4}
-                        fontSize="11"
-                        fill="#888"
-                        fontWeight="500"
-                      >
-                        {costValue.toFixed(1)}
-                      </SvgText>
-                    </React.Fragment>
-                  );
-                })}
                 <Path
                   d={cumulativeChartData.currentPath}
                   stroke={colors.primary}
