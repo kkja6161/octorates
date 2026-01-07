@@ -31,7 +31,24 @@ interface HalfHourlyData {
   intervalStart: Date;
   intervalKey: string;
   comparisonCost: number;
+  comparisonRate: number;
 }
+
+const bankersRound = (num: number, decimals: number): string => {
+  const factor = Math.pow(10, decimals);
+  const shifted = num * factor;
+  const truncated = Math.trunc(shifted);
+  const remainder = shifted - truncated;
+  
+  let rounded: number;
+  if (Math.abs(remainder - 0.5) < 1e-9) {
+    rounded = truncated % 2 === 0 ? truncated : truncated + 1;
+  } else {
+    rounded = Math.round(shifted);
+  }
+  
+  return (rounded / factor).toFixed(decimals);
+};
 
 export default function DailyDetailScreen() {
   const { date, type } = useLocalSearchParams<{ date: string; type: 'electricity' | 'gas' }>();
@@ -60,13 +77,8 @@ export default function DailyDetailScreen() {
         // If calculating manually: Rate (p) * Cons (kWh) / 100 = Cost (£)
         const comparisonRate = entry.flexibleRate || 0;
         
-        let comparisonCost = 0;
-        if (entry.flexibleCost !== undefined) {
-           comparisonCost = entry.flexibleCost;
-        } else {
-           // Corrected math: Divide by 100 to convert Pence to Pounds
-           comparisonCost = (entry.consumption * comparisonRate) / 100;
-        }
+        // Calculate comparison cost: Rate (p) * Cons (kWh) / 100 = Cost (£)
+        const comparisonCost = (entry.consumption * comparisonRate) / 100;
 
         return {
           time,
@@ -76,6 +88,7 @@ export default function DailyDetailScreen() {
           intervalStart,
           intervalKey: entry.interval_start,
           comparisonCost,
+          comparisonRate,
         };
       })
       .sort((a, b) => a.intervalStart.getTime() - b.intervalStart.getTime());
@@ -440,10 +453,10 @@ export default function DailyDetailScreen() {
                   {formatConsumption(period.consumption)}
                 </Text>
                 <Text style={styles.periodRate}>
-                  {period.rate !== null ? formatRate(period.rate) : '-'}
+                  {period.rate !== null ? `${formatRate(period.rate)} (${formatRate(period.comparisonRate)})` : '-'}
                 </Text>
                 <Text style={styles.periodCost}>
-                  {formatPrice(period.cost)}
+                  £{bankersRound(period.cost, 2)}
                 </Text>
               </View>
             </View>
@@ -638,10 +651,10 @@ const styles = StyleSheet.create({
     textAlign: 'center' as const,
   },
   periodRate: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '500' as const,
     color: Colors.text.primary,
-    width: 80,
+    width: 110,
     textAlign: 'center' as const,
   },
   periodCost: {
