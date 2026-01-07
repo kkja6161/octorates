@@ -60,22 +60,6 @@ export const [BillingProvider, useBilling] = createContextHook(() => {
       return null;
     }
 
-    const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
-    
-    let estimatedBillStartDate = new Date(currentYear, currentMonth, 1);
-    const estimatedBillEndDate = new Date(currentYear, currentMonth + 1, 0);
-
-    if (lastBillDateQuery.data) {
-      const newStartDate = new Date(lastBillDateQuery.data);
-      newStartDate.setDate(newStartDate.getDate() + 1);
-      if (newStartDate < now) {
-        estimatedBillStartDate = newStartDate;
-        console.log('[Billing] Using last bill date + 1 day as start:', estimatedBillStartDate.toISOString());
-      }
-    }
-
     let electricityEstimate = null;
     let gasEstimate = null;
 
@@ -84,39 +68,50 @@ export const [BillingProvider, useBilling] = createContextHook(() => {
       
       let totalConsumption = 0;
       let totalCost = 0;
-      let daysInPeriod = 0;
+      let oldestDate: Date | null = null;
+      let newestDate: Date | null = null;
 
       electricityDailyConsumption.forEach(day => {
         if (day.entries.length > 0) {
+          totalConsumption += day.totalConsumption;
+          totalCost += day.cost;
+          
           const dayDate = new Date(day.entries[0].interval_start);
-          dayDate.setHours(0, 0, 0, 0);
-          
-          const startCheck = new Date(estimatedBillStartDate);
-          startCheck.setHours(0, 0, 0, 0);
-          
-          if (dayDate >= startCheck) {
-            totalConsumption += day.totalConsumption;
-            totalCost += day.cost;
-            daysInPeriod++;
+          if (!oldestDate || dayDate < oldestDate) {
+            oldestDate = dayDate;
+          }
+          if (!newestDate || dayDate > newestDate) {
+            newestDate = dayDate;
           }
         }
       });
 
-      console.log(`[Billing] Electricity: ${daysInPeriod} days in billing period`);
+      console.log(`[Billing] Electricity: ${electricityDailyConsumption.length} days processed`);
       console.log(`[Billing] Electricity: Total consumption = ${totalConsumption.toFixed(2)} kWh`);
-      console.log(`[Billing] Electricity: Total cost (inc. standing charge from usage) = £${totalCost.toFixed(2)}`);
+      console.log(`[Billing] Electricity: Total cost (inc. standing charge) = £${totalCost.toFixed(2)}`);
+      
+      if (oldestDate && newestDate) {
+        const oldest = oldestDate as Date;
+        const newest = newestDate as Date;
+        console.log(`[Billing] Electricity: Period from ${oldest.toISOString()} to ${newest.toISOString()}`);
+      }
 
-      if (daysInPeriod > 0) {
+      if (electricityDailyConsumption.length > 0 && totalConsumption > 0) {
+        const periodStart = oldestDate || new Date();
+        const periodEnd = newestDate || new Date();
+        
         electricityEstimate = {
           consumption: totalConsumption,
           cost: totalCost,
           standingCharge: 0,
           totalCost: totalCost,
-          periodStart: estimatedBillStartDate,
-          periodEnd: estimatedBillEndDate,
-          lastBillDate: estimatedBillStartDate,
+          periodStart,
+          periodEnd,
+          lastBillDate: lastBillDateQuery.data ? new Date(lastBillDateQuery.data) : periodStart,
         };
       }
+    } else {
+      console.log('[Billing] No electricity daily consumption data available');
     }
 
     if (showGas && gasDailyConsumption && gasDailyConsumption.length > 0) {
@@ -124,39 +119,50 @@ export const [BillingProvider, useBilling] = createContextHook(() => {
       
       let totalConsumption = 0;
       let totalCost = 0;
-      let daysInPeriod = 0;
+      let oldestDate: Date | null = null;
+      let newestDate: Date | null = null;
 
       gasDailyConsumption.forEach(day => {
         if (day.entries.length > 0) {
+          totalConsumption += day.totalConsumption;
+          totalCost += day.cost;
+          
           const dayDate = new Date(day.entries[0].interval_start);
-          dayDate.setHours(0, 0, 0, 0);
-          
-          const startCheck = new Date(estimatedBillStartDate);
-          startCheck.setHours(0, 0, 0, 0);
-          
-          if (dayDate >= startCheck) {
-            totalConsumption += day.totalConsumption;
-            totalCost += day.cost;
-            daysInPeriod++;
+          if (!oldestDate || dayDate < oldestDate) {
+            oldestDate = dayDate;
+          }
+          if (!newestDate || dayDate > newestDate) {
+            newestDate = dayDate;
           }
         }
       });
 
-      console.log(`[Billing] Gas: ${daysInPeriod} days in billing period`);
+      console.log(`[Billing] Gas: ${gasDailyConsumption.length} days processed`);
       console.log(`[Billing] Gas: Total consumption = ${totalConsumption.toFixed(2)} kWh`);
-      console.log(`[Billing] Gas: Total cost (inc. standing charge from usage) = £${totalCost.toFixed(2)}`);
+      console.log(`[Billing] Gas: Total cost (inc. standing charge) = £${totalCost.toFixed(2)}`);
+      
+      if (oldestDate && newestDate) {
+        const oldest = oldestDate as Date;
+        const newest = newestDate as Date;
+        console.log(`[Billing] Gas: Period from ${oldest.toISOString()} to ${newest.toISOString()}`);
+      }
 
-      if (daysInPeriod > 0) {
+      if (gasDailyConsumption.length > 0 && totalConsumption > 0) {
+        const periodStart = oldestDate || new Date();
+        const periodEnd = newestDate || new Date();
+        
         gasEstimate = {
           consumption: totalConsumption,
           cost: totalCost,
           standingCharge: 0,
           totalCost: totalCost,
-          periodStart: estimatedBillStartDate,
-          periodEnd: estimatedBillEndDate,
-          lastBillDate: estimatedBillStartDate,
+          periodStart,
+          periodEnd,
+          lastBillDate: lastBillDateQuery.data ? new Date(lastBillDateQuery.data) : periodStart,
         };
       }
+    } else if (showGas) {
+      console.log('[Billing] No gas daily consumption data available');
     }
 
     const totalEstimatedCost = 
