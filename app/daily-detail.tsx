@@ -255,11 +255,11 @@ export default function DailyDetailScreen() {
             </View>
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Total Cost (Current Tariff)</Text>
-              <Text style={styles.summaryValue}>{formatPrice(dailyData.cost)}</Text>
+              <Text style={styles.summaryValue}>£{bankersRound(dailyData.cost, 2)}</Text>
             </View>
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>{getTariffDisplayName(type === 'electricity' ? comparisonElectricityTariffName : comparisonGasTariffName, 'short')} Cost</Text>
-              <Text style={styles.summaryValue}>{formatPrice(dailyData.flexibleCost)}</Text>
+              <Text style={styles.summaryValue}>£{bankersRound(dailyData.flexibleCost, 2)}</Text>
             </View>
             <View style={[styles.summaryRow, styles.summaryDifferenceRow]}>
               <Text style={styles.summaryLabel}>
@@ -269,13 +269,13 @@ export default function DailyDetailScreen() {
                 styles.summaryDifference,
                 dailyData.difference > 0 ? styles.savingText : styles.extraText,
               ]}>
-                {formatPrice(Math.abs(dailyData.difference))}
+                £{bankersRound(Math.abs(dailyData.difference), 2)}
               </Text>
             </View>
             {avgRate > 0 && (
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Average Rate</Text>
-                <Text style={styles.summaryValue}>{formatRate(avgRate)}</Text>
+                <Text style={styles.summaryValue}>{bankersRound(avgRate, 2)}p</Text>
               </View>
             )}
           </View>

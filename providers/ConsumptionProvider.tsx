@@ -1032,10 +1032,22 @@ export const [ConsumptionProvider, useConsumption] = createContextHook(() => {
       const roundedConsumption = roundHalfToEven(entry.consumption);
       const entryCost = matchedRate ? roundedConsumption * (matchedRate.price / 100) : 0;
       
+      // Calculate comparison rate for this entry
+      let comparisonRateForEntry: number | null = null;
+      if (useFlexibleRate && flexibleRate !== null) {
+        comparisonRateForEntry = flexibleRate;
+      } else if (comparisonRates && comparisonRates.length > 0) {
+        const matchedComparisonRate = findBestRate(comparisonRates, intervalStart);
+        if (matchedComparisonRate) {
+          comparisonRateForEntry = matchedComparisonRate.price;
+        }
+      }
+      
       const entryWithRate: ConsumptionEntryWithRate = {
         ...entry,
         rate: matchedRate ? matchedRate.price : null,
         cost: entryCost,
+        flexibleRate: comparisonRateForEntry,
       };
       
       if (!dailyMap.has(dateKey)) {
