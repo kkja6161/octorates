@@ -6,12 +6,12 @@ import {
   ScrollView,
   Pressable,
   Dimensions,
-  Platform,
 } from 'react-native';
 import { Stack, useLocalSearchParams, router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ArrowLeft, Zap, Flame, Clock } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { Path, Rect } from 'react-native-svg';
 
 import { useConsumption } from '@/providers/ConsumptionProvider';
 import { useComparisonRate } from '@/hooks/useComparisonRate';
@@ -148,48 +148,74 @@ export default function DailyDetailScreen() {
     return Math.max(maxCurrent, maxComparison, 0.01);
   }, [cumulativeCosts]);
 
-  const getRateLinePoints = useMemo(() => {
-    if (halfHourlyData.length === 0 || maxRate === minRate) return [];
+  const usageChartData = useMemo(() => {
+    if (halfHourlyData.length === 0) return null;
     
     const chartHeight = 120;
     const chartWidth = SCREEN_WIDTH - CHART_HORIZONTAL_PADDING - 32;
+    const padding = { top: 10, bottom: 10, left: 0, right: 0 };
+    const graphHeight = chartHeight - padding.top - padding.bottom;
     const barGap = 1;
     const totalBars = halfHourlyData.length;
     const barWidth = (chartWidth - (totalBars - 1) * barGap) / totalBars;
     
-    return halfHourlyData.map((period, index) => {
+    const bars = halfHourlyData.map((period, index) => {
+      const x = index * (barWidth + barGap);
+      const barHeight = maxConsumption > 0 ? (period.consumption / maxConsumption) * graphHeight : 0;
+      return { x, height: Math.max(2, barHeight), width: barWidth };
+    });
+
+    const rateLine = halfHourlyData.map((period, index) => {
       const x = index * (barWidth + barGap) + barWidth / 2;
       const rate = period.rate || 0;
       const normalizedRate = maxRate > minRate 
         ? (rate - minRate) / (maxRate - minRate) 
         : 0.5;
-      const y = chartHeight - (normalizedRate * (chartHeight - 20)) - 10;
+      const y = padding.top + (1 - normalizedRate) * graphHeight;
       return { x, y, rate };
     });
-  }, [halfHourlyData, maxRate, minRate]);
 
-  const getCumulativeCostLinePoints = useMemo(() => {
-    if (cumulativeCosts.length === 0 || maxCumulativeCost === 0) return { current: [], comparison: [] };
+    let ratePath = '';
+    rateLine.forEach((point, index) => {
+      if (index === 0) {
+        ratePath = `M ${point.x} ${point.y}`;
+      } else {
+        ratePath += ` L ${point.x} ${point.y}`;
+      }
+    });
+    
+    return { bars, ratePath, padding, chartHeight, chartWidth };
+  }, [halfHourlyData, maxRate, minRate, maxConsumption]);
+
+  const cumulativeChartData = useMemo(() => {
+    if (cumulativeCosts.length === 0 || maxCumulativeCost === 0) return null;
     
     const chartHeight = 120;
     const chartWidth = SCREEN_WIDTH - CHART_HORIZONTAL_PADDING - 32;
+    const padding = { top: 10, bottom: 10, left: 0, right: 0 };
+    const graphHeight = chartHeight - padding.top - padding.bottom;
     const pointSpacing = chartWidth / (cumulativeCosts.length - 1 || 1);
     
-    const current = cumulativeCosts.map((cost, index) => {
+    let currentPath = '';
+    let comparisonPath = '';
+
+    cumulativeCosts.forEach((cost, index) => {
       const x = index * pointSpacing;
-      const normalized = cost.currentCumulative / maxCumulativeCost;
-      const y = chartHeight - (normalized * (chartHeight - 20)) - 10;
-      return { x, y, cost: cost.currentCumulative };
+      const currentNormalized = cost.currentCumulative / maxCumulativeCost;
+      const comparisonNormalized = cost.comparisonCumulative / maxCumulativeCost;
+      const currentY = padding.top + (1 - currentNormalized) * graphHeight;
+      const comparisonY = padding.top + (1 - comparisonNormalized) * graphHeight;
+
+      if (index === 0) {
+        currentPath = `M ${x} ${currentY}`;
+        comparisonPath = `M ${x} ${comparisonY}`;
+      } else {
+        currentPath += ` L ${x} ${currentY}`;
+        comparisonPath += ` L ${x} ${comparisonY}`;
+      }
     });
 
-    const comparison = cumulativeCosts.map((cost, index) => {
-      const x = index * pointSpacing;
-      const normalized = cost.comparisonCumulative / maxCumulativeCost;
-      const y = chartHeight - (normalized * (chartHeight - 20)) - 10;
-      return { x, y, cost: cost.comparisonCumulative };
-    });
-
-    return { current, comparison };
+    return { currentPath, comparisonPath, chartHeight, chartWidth, padding };
   }, [cumulativeCosts, maxCumulativeCost]);
 
   const formatPrice = (price: number): string => `£${price.toFixed(4)}`;
@@ -294,60 +320,31 @@ export default function DailyDetailScreen() {
               <Text style={styles.chartLegendText}>Rate (p)</Text>
             </View>
           </View>
-          <View style={styles.chartContainer}>
-            <View style={styles.chartMainArea}>
-              <View style={styles.chartBars}>
-                {halfHourlyData.map((period, index) => {
-                  const barHeight = maxConsumption > 0 ? (period.consumption / maxConsumption) * 120 : 0;
-                  
-                  return (
-                    <View key={index} style={styles.barWrapper}>
-                      <View
-                        style={[
-                          styles.bar,
-                          {
-                            height: Math.max(2, barHeight),
-                            backgroundColor: getBarColor(),
-                            opacity: 0.8,
-                          },
-                        ]}
-                      />
-                    </View>
-                  );
-                })}
-              </View>
-              <View style={styles.rateLineContainer} pointerEvents="none">
-                {getRateLinePoints.length > 1 && (
-                  <View style={StyleSheet.absoluteFill}>
-                    {getRateLinePoints.map((point, index) => {
-                      if (index === getRateLinePoints.length - 1) return null;
-                      const nextPoint = getRateLinePoints[index + 1];
-                      const dx = nextPoint.x - point.x;
-                      const dy = nextPoint.y - point.y;
-                      const length = Math.sqrt(dx * dx + dy * dy);
-                      const angle = Math.atan2(dy, dx) * (180 / Math.PI);
-                      
-                      return (
-                        <View
-                          key={index}
-                          style={[
-                            styles.rateLine,
-                            {
-                              width: length,
-                              left: point.x,
-                              top: point.y,
-                              transform: [{ rotate: `${angle}deg` }],
-                            },
-                          ]}
-                        />
-                      );
-                    })}
-
-                  </View>
-                )}
-              </View>
+          {usageChartData && (
+            <View style={styles.chartContainer}>
+              <Svg width={usageChartData.chartWidth} height={usageChartData.chartHeight}>
+                {usageChartData.bars.map((bar, index) => (
+                  <Rect
+                    key={index}
+                    x={bar.x}
+                    y={usageChartData.chartHeight - bar.height - usageChartData.padding.bottom}
+                    width={bar.width}
+                    height={bar.height}
+                    fill={getBarColor()}
+                    opacity={0.8}
+                  />
+                ))}
+                <Path
+                  d={usageChartData.ratePath}
+                  stroke="#ef4444"
+                  strokeWidth="3"
+                  fill="none"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </Svg>
             </View>
-          </View>
+          )}
           <View style={styles.chartLabels}>
             <Text style={styles.chartLabel}>00</Text>
             <Text style={styles.chartLabel}>06</Text>
@@ -368,70 +365,28 @@ export default function DailyDetailScreen() {
               <Text style={styles.chartLegendText}>{getTariffDisplayName(type === 'electricity' ? comparisonElectricityTariffName : comparisonGasTariffName, 'short')}</Text>
             </View>
           </View>
-          <View style={styles.cumulativeCostContainer}>
-            {Platform.OS !== 'web' ? (
-              <View style={styles.cumulativeChartArea}>
-                {getCumulativeCostLinePoints.current.length > 1 && (
-                  <View style={StyleSheet.absoluteFill}>
-                    {getCumulativeCostLinePoints.current.map((point, index) => {
-                      if (index === getCumulativeCostLinePoints.current.length - 1) return null;
-                      const nextPoint = getCumulativeCostLinePoints.current[index + 1];
-                      const dx = nextPoint.x - point.x;
-                      const dy = nextPoint.y - point.y;
-                      const length = Math.sqrt(dx * dx + dy * dy);
-                      const angle = Math.atan2(dy, dx) * (180 / Math.PI);
-                      
-                      return (
-                        <View
-                          key={`current-${index}`}
-                          style={[
-                            styles.cumulativeLine,
-                            {
-                              width: length,
-                              left: point.x,
-                              top: point.y,
-                              backgroundColor: colors.primary,
-                              transform: [{ rotate: `${angle}deg` }],
-                            },
-                          ]}
-                        />
-                      );
-                    })}
-                    {getCumulativeCostLinePoints.comparison.map((point, index) => {
-                      if (index === getCumulativeCostLinePoints.comparison.length - 1) return null;
-                      const nextPoint = getCumulativeCostLinePoints.comparison[index + 1];
-                      const dx = nextPoint.x - point.x;
-                      const dy = nextPoint.y - point.y;
-                      const length = Math.sqrt(dx * dx + dy * dy);
-                      const angle = Math.atan2(dy, dx) * (180 / Math.PI);
-                      
-                      return (
-                        <View
-                          key={`comparison-${index}`}
-                          style={[
-                            styles.cumulativeLine,
-                            {
-                              width: length,
-                              left: point.x,
-                              top: point.y,
-                              backgroundColor: '#10b981',
-                              transform: [{ rotate: `${angle}deg` }],
-                            },
-                          ]}
-                        />
-                      );
-                    })}
-                  </View>
-                )}
-              </View>
-            ) : (
-              <View style={styles.cumulativeChartArea}>
-                <Text style={[styles.chartLegendText, { textAlign: 'center' as const, padding: 20 }]}>
-                  Cumulative cost visualization available on mobile
-                </Text>
-              </View>
-            )}
-          </View>
+          {cumulativeChartData && (
+            <View style={styles.cumulativeCostContainer}>
+              <Svg width={cumulativeChartData.chartWidth} height={cumulativeChartData.chartHeight}>
+                <Path
+                  d={cumulativeChartData.currentPath}
+                  stroke={colors.primary}
+                  strokeWidth="3"
+                  fill="none"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                <Path
+                  d={cumulativeChartData.comparisonPath}
+                  stroke="#10b981"
+                  strokeWidth="3"
+                  fill="none"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </Svg>
+            </View>
+          )}
           <View style={styles.chartLabels}>
             <Text style={styles.chartLabel}>00</Text>
             <Text style={styles.chartLabel}>06</Text>
@@ -554,42 +509,8 @@ const styles = StyleSheet.create({
     color: Colors.text.secondary,
   },
   chartContainer: {
-    flexDirection: 'row',
-    gap: 4,
-  },
-
-  chartMainArea: {
-    flex: 1,
-    position: 'relative',
-  },
-  chartBars: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    height: 120,
-    gap: 1,
-  },
-  rateLineContainer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
-  rateLine: {
-    position: 'absolute',
-    height: 2,
-    backgroundColor: '#ef4444',
-    transformOrigin: 'left center',
-  },
-
-  barWrapper: {
-    flex: 1,
     alignItems: 'center',
-    justifyContent: 'flex-end',
-  },
-  bar: {
-    width: '100%',
-    borderRadius: 1,
+    marginVertical: 8,
   },
   chartLabels: {
     flexDirection: 'row',
@@ -601,17 +522,8 @@ const styles = StyleSheet.create({
     color: Colors.text.secondary,
   },
   cumulativeCostContainer: {
-    height: 120,
-  },
-  cumulativeChartArea: {
-    flex: 1,
-    position: 'relative',
-  },
-  cumulativeLine: {
-    position: 'absolute',
-    height: 3,
-    transformOrigin: 'left center',
-    borderRadius: 1.5,
+    alignItems: 'center',
+    marginVertical: 8,
   },
   detailsSection: {
     backgroundColor: Colors.surface,
