@@ -2,7 +2,7 @@ export interface EnergyRate {
   value_exc_vat: number;
   value_inc_vat: number;
   valid_from: string;
-  valid_to: string | null;
+  valid_to: string;
 }
 
 export interface EnergyRatesResponse {
@@ -117,9 +117,6 @@ export interface ConsumptionEntryWithRate extends ConsumptionEntry {
   rate: number | null;
   cost: number;
   flexibleRate?: number | null;
-  flexibleCost?: number;
-  comparisonRate?: number | null;
-  comparisonCost?: number;
 }
 
 export interface ConsumptionResponse {
@@ -202,8 +199,6 @@ export interface AccountProperty {
 
 export interface AccountResponse {
   number: string;
-  balance?: number;
-  ledger_balance?: number;
   properties: AccountProperty[];
 }
 
@@ -243,54 +238,4 @@ export interface ComparisonTariffOption {
   displayName: string;
   description: string;
   hasGas: boolean;
-}
-
-export interface AccountBalance {
-  balance: number;
-}
-
-export interface BillingPeriod {
-  start: string;
-  end: string;
-}
-
-export interface Bill {
-  id: string;
-  account: string;
-  bill_type: string;
-  from_date: string;
-  to_date: string;
-  kwh: number;
-  cost_before_tax: number;
-  cost_after_tax: number;
-  vat: number;
-  issued_date: string;
-  is_final: boolean;
-}
-
-export interface BillsResponse {
-  count: number;
-  next: string | null;
-  previous: string | null;
-  results: Bill[];
-}
-
-export interface EstimatedBilling {
-  electricity: {
-    consumption: number;
-    cost: number;
-    standingCharge: number;
-    totalCost: number;
-    periodStart: Date;
-    periodEnd: Date;
-  } | null;
-  gas: {
-    consumption: number;
-    cost: number;
-    standingCharge: number;
-    totalCost: number;
-    periodStart: Date;
-    periodEnd: Date;
-  } | null;
-  totalEstimatedCost: number;
 }

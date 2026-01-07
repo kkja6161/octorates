@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { Home, BarChart3, BatteryCharging, Receipt } from 'lucide-react-native';
+import { Home, BarChart3, BatteryCharging } from 'lucide-react-native';
 import { useTheme } from '@/providers/ThemeProvider';
 import { useColors } from '@/constants/colors';
 
@@ -43,13 +43,6 @@ export default function TabsLayout() {
         options={{
           title: 'EV',
           tabBarIcon: ({ color, size }) => <BatteryCharging size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="billing"
-        options={{
-          title: 'Billing',
-          tabBarIcon: ({ color, size }) => <Receipt size={size} color={color} />,
         }}
       />
       <Tabs.Screen

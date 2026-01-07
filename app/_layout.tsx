@@ -11,7 +11,6 @@ import { NotificationSettingsProvider } from "@/providers/NotificationSettingsPr
 import { TutorialProvider } from "@/providers/TutorialProvider";
 import { ThemeContext } from "@/providers/ThemeProvider";
 import { EVProvider } from "@/providers/EVProvider";
-import { BillingProvider } from "@/providers/BillingProvider";
 import TutorialOverlay from "@/components/TutorialOverlay";
 import Colors from "@/constants/colors";
 
@@ -97,15 +96,13 @@ export default function RootLayout() {
         <EnergyRatesProvider>
           <GestureHandlerRootView style={{ flex: 1 }}>
             <ConsumptionProvider>
-              <BillingProvider>
-                <EVProvider>
-                  <NotificationSettingsProvider>
-                    <TutorialProvider>
-                      <AppContent />
-                    </TutorialProvider>
-                  </NotificationSettingsProvider>
-                </EVProvider>
-              </BillingProvider>
+              <EVProvider>
+                <NotificationSettingsProvider>
+                  <TutorialProvider>
+                    <AppContent />
+                  </TutorialProvider>
+                </NotificationSettingsProvider>
+              </EVProvider>
             </ConsumptionProvider>
           </GestureHandlerRootView>
         </EnergyRatesProvider>
