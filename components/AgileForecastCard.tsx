@@ -25,7 +25,7 @@ export const AgileForecastCard = React.memo(function AgileForecastCard({
 }: AgileForecastCardProps) {
   const { data: rawForecastRates, isLoading, error } = useQuery({
     queryKey: ['agile-prediction', region],
-    queryFn: () => fetchAgilePrediction(region, 5),
+    queryFn: () => fetchAgilePrediction(region, 7),
     staleTime: 30 * 60 * 1000,
     gcTime: 60 * 60 * 1000,
     retry: 2,
@@ -52,13 +52,30 @@ export const AgileForecastCard = React.memo(function AgileForecastCard({
     const dayAfterTomorrowStart = new Date(tomorrowStart);
     dayAfterTomorrowStart.setDate(dayAfterTomorrowStart.getDate() + 1);
     
-    return rawForecastRates.filter(rate => {
+    const filtered = rawForecastRates.filter(rate => {
       // Always exclude today
       if (rate.validFrom < tomorrowStart) return false;
       // Exclude tomorrow if actual rates are available
       if (tomorrowRatesAvailable && rate.validFrom < dayAfterTomorrowStart) return false;
       return true;
     });
+    
+    // Get unique days and limit to exactly 5 days
+    const daySet = new Set<string>();
+    const result: ProcessedForecastRate[] = [];
+    
+    for (const rate of filtered) {
+      const dayKey = rate.validFrom.toDateString();
+      if (!daySet.has(dayKey)) {
+        if (daySet.size >= 5) break;
+        daySet.add(dayKey);
+      }
+      if (daySet.size <= 5) {
+        result.push(rate);
+      }
+    }
+    
+    return result;
   }, [rawForecastRates, tomorrowRatesAvailable]);
 
   const chartData = useMemo(() => {
@@ -95,25 +112,55 @@ export const AgileForecastCard = React.memo(function AgileForecastCard({
     const getX = (index: number) => padding.left + (index / Math.max(forecastRates.length - 1, 1)) * graphWidth;
     const getY = (price: number) => padding.top + graphHeight - ((price - minRate) / range) * graphHeight;
 
-    let pathD = '';
+    // Build colored path segments like RateLineChart
+    const pathSegments: { path: string; color: string }[] = [];
+    let currentPath = '';
+    let currentColor = '';
+
+    forecastRates.forEach((rate, index) => {
+      const x = getX(index);
+      const y = getY(rate.price);
+      const level = getRateThresholdLevel(rate.price, thresholds);
+      const color = getThresholdColor(level, isDark);
+
+      if (index === 0) {
+        currentPath = `M ${x} ${y}`;
+        currentColor = color;
+      } else {
+        if (color === currentColor) {
+          currentPath += ` L ${x} ${y}`;
+        } else {
+          pathSegments.push({ path: currentPath, color: currentColor });
+          currentPath = `M ${getX(index - 1)} ${getY(forecastRates[index - 1].price)} L ${x} ${y}`;
+          currentColor = color;
+        }
+      }
+
+      if (index === forecastRates.length - 1) {
+        pathSegments.push({ path: currentPath, color: currentColor });
+      }
+    });
+
+    // Build area path for gradient fill
+    let areaPathD = '';
     forecastRates.forEach((rate, index) => {
       const x = getX(index);
       const y = getY(rate.price);
       if (index === 0) {
-        pathD = `M ${x} ${y}`;
+        areaPathD = `M ${x} ${y}`;
       } else {
-        pathD += ` L ${x} ${y}`;
+        areaPathD += ` L ${x} ${y}`;
       }
     });
 
-    let areaPath = pathD;
+    let areaPath = areaPathD;
     if (forecastRates.length > 0) {
       areaPath += ` L ${getX(forecastRates.length - 1)} ${padding.top + graphHeight}`;
       areaPath += ` L ${getX(0)} ${padding.top + graphHeight} Z`;
     }
 
     return {
-      pathD,
+      pathSegments,
       areaPath,
       minRate,
       maxRate,
@@ -122,7 +169,7 @@ export const AgileForecastCard = React.memo(function AgileForecastCard({
       getX,
       getY,
     };
-  }, [forecastRates, graphHeight, graphWidth, padding.left, padding.top]);
+  }, [forecastRates, graphHeight, graphWidth, padding.left, padding.top, thresholds, isDark]);
 
   const formatPrice = (price: number) => `${price.toFixed(1)}p`;
 
@@ -242,7 +289,7 @@ export const AgileForecastCard = React.memo(function AgileForecastCard({
     );
   }
 
-  const { pathD, areaPath, minRate, range, days, getY } = chartData;
+  const { pathSegments, areaPath, minRate, range, days, getY } = chartData;
 
   const avgPrice = forecastRates.reduce((sum, r) => sum + r.price, 0) / forecastRates.length;
   const minPrice = Math.min(...forecastRates.map(r => r.price));
@@ -304,14 +351,17 @@ export const AgileForecastCard = React.memo(function AgileForecastCard({
             fill="url(#areaGradient)"
           />
 
-          <Path
-            d={pathD}
-            stroke={colors.primary}
-            strokeWidth="2.5"
-            fill="none"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
+          {pathSegments.map((segment, i) => (
+            <Path
+              key={i}
+              d={segment.path}
+              stroke={segment.color}
+              strokeWidth="3"
+              fill="none"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          ))}
 
           {days.map((day, i) => {
             const dayRates = forecastRates.filter(r => r.date === day.date);
