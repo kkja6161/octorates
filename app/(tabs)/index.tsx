@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -52,7 +52,6 @@ export default function HomeScreen() {
   const colors = useColors(isDark);
   const insets = useSafeAreaInsets();
   const [expandedFuelType, setExpandedFuelType] = useState<'electricity' | 'gas' | null>('electricity');
-  const todayRatesScrollRef = useRef<ScrollView>(null);
   
   const handleFuelTypePress = (type: 'electricity' | 'gas') => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -68,31 +67,6 @@ export default function HomeScreen() {
     const thresholds = type === 'electricity' ? electricityThresholds : gasThresholds;
     const level = getRateThresholdLevel(price, thresholds);
     return getThresholdColor(level, isDark);
-  };
-
-  // Replaced setTimeout with direct check, though for scrolling we might still need a small delay 
-  // or use onLayout (kept simple for now but cleaned up dependencies)
-  useEffect(() => {
-    if (expandedFuelType) {
-      const rates = expandedFuelType === 'electricity' ? todayElectricityRates : todayGasRates;
-      if (rates.length > 0) {
-        // Using a shorter timeout to ensure render frame is ready
-        const timer = setTimeout(() => {
-          const currentRateIndex = rates.findIndex((r: ProcessedRate) => r.isCurrent);
-          if (currentRateIndex >= 0 && todayRatesScrollRef.current) {
-            const scrollToPosition = Math.max(0, currentRateIndex * 58 - 100);
-            todayRatesScrollRef.current.scrollTo({ x: scrollToPosition, animated: true });
-          }
-        }, 100);
-        return () => clearTimeout(timer);
-      }
-    }
-  }, [expandedFuelType, todayElectricityRates, todayGasRates]);
-
-  const getRateHeight = (price: number, minRate: number, maxRate: number) => {
-    const range = maxRate - minRate;
-    if (range === 0) return 40;
-    return ((price - minRate) / range) * 60 + 20;
   };
 
   const formatPrice = (price: number) => {
@@ -475,9 +449,6 @@ export default function HomeScreen() {
               (todayRates.length > 0 && todayRates.length <= 4) || 
               (todayRates.length > 0 && allRatesSamePrice(todayRates));
             const isAgile = isElectricity && isAgileTariff(selectedElectricityTariff);
-            
-            const minRate = todayRates.length > 0 ? Math.min(...todayRates.map((r: ProcessedRate) => r.price)) : 0;
-            const maxRate = todayRates.length > 0 ? Math.max(...todayRates.map((r: ProcessedRate) => r.price)) : 0;
 
             return todayRates.length > 0 ? (
               <>
@@ -498,131 +469,43 @@ export default function HomeScreen() {
                   </View>
                 ) : (
                   <>
-                    {isAgile ? (
-                      <>
-                        <Pressable style={styles.barGraphCard} onPress={() => router.push('/electricity-detail')}>
-                          <Text style={styles.sectionTitle}>Today&apos;s Rates</Text>
-                          <RateLineChart 
-                            rates={todayRates} 
-                            type={expandedFuelType} 
-                            colors={colors}
-                            getRateColor={getRateColor}
-                            allFutureRates={tomorrowRates}
-                          />
-                        </Pressable>
+                    <Pressable style={styles.barGraphCard} onPress={() => isElectricity ? router.push('/electricity-detail') : undefined}>
+                      <Text style={styles.sectionTitle}>Today&apos;s Rates</Text>
+                      <RateLineChart 
+                        rates={todayRates} 
+                        type={expandedFuelType} 
+                        colors={colors}
+                        getRateColor={getRateColor}
+                        allFutureRates={tomorrowRates}
+                      />
+                    </Pressable>
 
-                        {tomorrowRates.length > 0 && (
-                          <Pressable style={styles.barGraphCard} onPress={() => router.push('/electricity-detail')}>
-                            <Text style={styles.sectionTitle}>Tomorrow&apos;s Rates</Text>
-                            <RateLineChart 
-                              rates={tomorrowRates} 
-                              type={expandedFuelType} 
-                              colors={colors}
-                              getRateColor={getRateColor}
-                            />
-                            
-                            {electricityCheaperPeriods.length > 0 && tomorrowGasRates.length > 0 && (
-                              <View style={[styles.cheaperThanGasCard, { borderTopColor: colors.border }]}>
-                                <Text style={[styles.cheaperThanGasTitle, { color: colors.text.primary }]}>Cheaper Than Gas ({formatPrice(tomorrowGasRates[0].price)})</Text>
-                                {electricityCheaperPeriods.map((period, idx) => (
-                                  <View key={idx} style={styles.cheaperPeriodRow}>
-                                    <Text style={[styles.cheaperPeriodTime, { color: colors.success }]}>
-                                      {period.start} - {period.end}
-                                    </Text>
-                                    <Text style={[styles.cheaperPeriodPrice, { color: colors.success }]}>
-                                      {formatPrice(period.price)}
-                                    </Text>
-                                  </View>
-                                ))}
+                    {tomorrowRates.length > 0 && (
+                      <Pressable style={styles.barGraphCard} onPress={() => isElectricity ? router.push('/electricity-detail') : undefined}>
+                        <Text style={styles.sectionTitle}>Tomorrow&apos;s Rates</Text>
+                        <RateLineChart 
+                          rates={tomorrowRates} 
+                          type={expandedFuelType} 
+                          colors={colors}
+                          getRateColor={getRateColor}
+                        />
+                        
+                        {isAgile && electricityCheaperPeriods.length > 0 && tomorrowGasRates.length > 0 && (
+                          <View style={[styles.cheaperThanGasCard, { borderTopColor: colors.border }]}>
+                            <Text style={[styles.cheaperThanGasTitle, { color: colors.text.primary }]}>Cheaper Than Gas ({formatPrice(tomorrowGasRates[0].price)})</Text>
+                            {electricityCheaperPeriods.map((period, idx) => (
+                              <View key={idx} style={styles.cheaperPeriodRow}>
+                                <Text style={[styles.cheaperPeriodTime, { color: colors.success }]}>
+                                  {period.start} - {period.end}
+                                </Text>
+                                <Text style={[styles.cheaperPeriodPrice, { color: colors.success }]}>
+                                  {formatPrice(period.price)}
+                                </Text>
                               </View>
-                            )}
-                          </Pressable>
-                        )}
-                      </>
-                    ) : (
-                      <>
-                        <View style={styles.barGraphCard}>
-                          <Text style={styles.sectionTitle}>Today&apos;s Rates</Text>
-                          <ScrollView 
-                            ref={todayRatesScrollRef}
-                            horizontal 
-                            showsHorizontalScrollIndicator={false}
-                            contentContainerStyle={styles.chartContainer}
-                            scrollEnabled={true}
-                          >
-                            {todayRates.map((rate: ProcessedRate, index: number) => {
-                              const isCheaperThanGas = isElectricity && todayGasRates.length > 0 && rate.price < todayGasRates[0].price;
-                              return (
-                                <View key={index} style={styles.barContainer}>
-                                  <Text style={[
-                                    styles.barPrice,
-                                    isCheaperThanGas && styles.cheaperThanGasText
-                                  ]}>{formatPrice(rate.price)}</Text>
-                                  <View 
-                                    style={[
-                                      styles.bar,
-                                      { 
-                                        height: getRateHeight(rate.price, minRate, maxRate),
-                                        backgroundColor: rate.isCurrent 
-                                          ? colors.primary
-                                          : getRateColor(rate.price, expandedFuelType),
-                                        opacity: rate.isCurrent ? 1 : 0.8,
-                                      }
-                                    ]}
-                                  />
-                                  <Text style={[
-                                    styles.barTime,
-                                    rate.isCurrent && styles.barTimeCurrent,
-                                    isCheaperThanGas && styles.cheaperThanGasText
-                                  ]}>
-                                    {rate.time}
-                                  </Text>
-                                </View>
-                              );
-                            })}
-                          </ScrollView>
-                        </View>
-
-                        {tomorrowRates.length > 0 && (
-                          <View style={styles.barGraphCard}>
-                            <Text style={styles.sectionTitle}>Tomorrow&apos;s Rates</Text>
-                            <ScrollView 
-                              horizontal 
-                              showsHorizontalScrollIndicator={false}
-                              contentContainerStyle={styles.chartContainer}
-                              scrollEnabled={true}
-                            >
-                              {tomorrowRates.map((rate: ProcessedRate, index: number) => {
-                                const isCheaperThanGas = isElectricity && tomorrowGasRates.length > 0 && rate.price < tomorrowGasRates[0].price;
-                                return (
-                                  <View key={index} style={styles.barContainer}>
-                                    <Text style={[
-                                      styles.barPrice,
-                                      isCheaperThanGas && styles.cheaperThanGasText
-                                    ]}>{formatPrice(rate.price)}</Text>
-                                    <View 
-                                      style={[
-                                        styles.bar,
-                                        { 
-                                          height: getRateHeight(rate.price, minRate, maxRate),
-                                          backgroundColor: getRateColor(rate.price, expandedFuelType),
-                                          opacity: 0.8,
-                                        }
-                                      ]}
-                                    />
-                                    <Text style={[
-                                      styles.barTime,
-                                      isCheaperThanGas && styles.cheaperThanGasText
-                                    ]}>
-                                      {rate.time}
-                                    </Text>
-                                  </View>
-                                );
-                              })}
-                            </ScrollView>
+                            ))}
                           </View>
                         )}
-                      </>
+                      </Pressable>
                     )}
                   </>
                 )}
