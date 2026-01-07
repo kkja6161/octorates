@@ -22,7 +22,8 @@ import { ProcessedRate } from '@/types/energy';
 import { getRateThresholdLevel, getThresholdColor } from '@/utils/thresholds';
 import { getTariffDisplayName } from '@/utils/tariffNames';
 import { useTheme } from '@/providers/ThemeProvider';
-import { RateLineChart } from '@/components/RateLineChart'; // Ensure you created this file!
+import { RateLineChart } from '@/components/RateLineChart';
+import { GridStatusCard } from '@/components/GridStatusCard';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -374,6 +375,8 @@ export default function HomeScreen() {
               </Pressable>
             </Link>
           </View>
+          <GridStatusCard colors={colors} isDark={isDark} />
+          <View style={{ height: 12 }} />
           <View style={styles.fuelTypesContainer}>
             <Pressable
               accessibilityRole="button"

@@ -1,4 +1,4 @@
-import { EnergyRatesResponse, ProcessedRate, ProductsResponse, TariffInfo, ConsumptionResponse, StandingChargesResponse, AccountResponse, ProcessedAccountData, ProcessedTariffAgreement } from '@/types/energy';
+import { EnergyRatesResponse, ProcessedRate, ProductsResponse, TariffInfo, ConsumptionResponse, StandingChargesResponse, AccountResponse, ProcessedAccountData, ProcessedTariffAgreement, CarbonIntensityResponse, GenerationMixResponse, GridStatusData } from '@/types/energy';
 import { DEFAULT_GSP_REGION, buildProductListUrl, buildFlexibleTariffUrl, buildGasTrackerTariffUrl, OCTOPUS_API_BASE, PRODUCT_CODE_MAPPING } from '@/constants/octopus';
 
 function normalizeProductCode(productCode: string): string {
@@ -800,5 +800,57 @@ export async function fetchConsumption(
   } catch (error) {
     console.error(`[Energy API] ${fuelType} - ERROR:`, error);
     throw error;
+  }
+}
+
+const CARBON_INTENSITY_API = 'https://api.carbonintensity.org.uk';
+
+const RENEWABLE_FUELS = ['wind', 'solar', 'hydro', 'biomass'];
+
+export async function fetchGridStatus(): Promise<GridStatusData | null> {
+  console.log('[Energy API] ========== FETCH GRID STATUS ==========');
+  
+  try {
+    const [intensityRes, generationRes] = await Promise.all([
+      fetch(`${CARBON_INTENSITY_API}/intensity`),
+      fetch(`${CARBON_INTENSITY_API}/generation`),
+    ]);
+    
+    if (!intensityRes.ok || !generationRes.ok) {
+      console.error('[Energy API] Grid status API error:', intensityRes.status, generationRes.status);
+      return null;
+    }
+    
+    const intensityData: CarbonIntensityResponse = await intensityRes.json();
+    const generationData: GenerationMixResponse = await generationRes.json();
+    
+    if (!intensityData.data?.[0] || !generationData.data?.generationmix) {
+      console.error('[Energy API] Invalid grid status response');
+      return null;
+    }
+    
+    const intensity = intensityData.data[0];
+    const mix = generationData.data.generationmix;
+    
+    const renewablePercentage = mix
+      .filter(item => RENEWABLE_FUELS.includes(item.fuel.toLowerCase()))
+      .reduce((sum, item) => sum + item.perc, 0);
+    
+    const nonRenewablePercentage = 100 - renewablePercentage;
+    
+    const result: GridStatusData = {
+      carbonIntensity: intensity.intensity.actual ?? intensity.intensity.forecast,
+      intensityIndex: intensity.intensity.index,
+      renewablePercentage: Math.round(renewablePercentage * 10) / 10,
+      nonRenewablePercentage: Math.round(nonRenewablePercentage * 10) / 10,
+      generationMix: mix,
+      lastUpdated: new Date(),
+    };
+    
+    console.log('[Energy API] Grid status:', result);
+    return result;
+  } catch (error) {
+    console.error('[Energy API] Error fetching grid status:', error);
+    return null;
   }
 }

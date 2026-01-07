@@ -239,3 +239,40 @@ export interface ComparisonTariffOption {
   description: string;
   hasGas: boolean;
 }
+
+// Carbon Intensity API Types
+export interface CarbonIntensityData {
+  from: string;
+  to: string;
+  intensity: {
+    forecast: number;
+    actual: number | null;
+    index: 'very low' | 'low' | 'moderate' | 'high' | 'very high';
+  };
+}
+
+export interface CarbonIntensityResponse {
+  data: CarbonIntensityData[];
+}
+
+export interface GenerationMixItem {
+  fuel: string;
+  perc: number;
+}
+
+export interface GenerationMixResponse {
+  data: {
+    from: string;
+    to: string;
+    generationmix: GenerationMixItem[];
+  };
+}
+
+export interface GridStatusData {
+  carbonIntensity: number;
+  intensityIndex: string;
+  renewablePercentage: number;
+  nonRenewablePercentage: number;
+  generationMix: GenerationMixItem[];
+  lastUpdated: Date;
+}
