@@ -13,6 +13,7 @@ interface AgileForecastCardProps {
   colors: any;
   isDark: boolean;
   thresholds: RateThresholds;
+  tomorrowRatesAvailable: boolean;
 }
 
 export const AgileForecastCard = React.memo(function AgileForecastCard({
@@ -20,8 +21,9 @@ export const AgileForecastCard = React.memo(function AgileForecastCard({
   colors,
   isDark,
   thresholds,
+  tomorrowRatesAvailable,
 }: AgileForecastCardProps) {
-  const { data: forecastRates, isLoading, error } = useQuery({
+  const { data: rawForecastRates, isLoading, error } = useQuery({
     queryKey: ['agile-prediction', region],
     queryFn: () => fetchAgilePrediction(region, 5),
     staleTime: 30 * 60 * 1000,
@@ -39,6 +41,25 @@ export const AgileForecastCard = React.memo(function AgileForecastCard({
     const level = getRateThresholdLevel(price, thresholds);
     return getThresholdColor(level, isDark);
   };
+
+  const forecastRates = useMemo(() => {
+    if (!rawForecastRates || rawForecastRates.length === 0) return [];
+    
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const tomorrowStart = new Date(todayStart);
+    tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+    const dayAfterTomorrowStart = new Date(tomorrowStart);
+    dayAfterTomorrowStart.setDate(dayAfterTomorrowStart.getDate() + 1);
+    
+    return rawForecastRates.filter(rate => {
+      // Always exclude today
+      if (rate.validFrom < tomorrowStart) return false;
+      // Exclude tomorrow if actual rates are available
+      if (tomorrowRatesAvailable && rate.validFrom < dayAfterTomorrowStart) return false;
+      return true;
+    });
+  }, [rawForecastRates, tomorrowRatesAvailable]);
 
   const chartData = useMemo(() => {
     if (!forecastRates || forecastRates.length === 0) return null;
@@ -205,7 +226,7 @@ export const AgileForecastCard = React.memo(function AgileForecastCard({
     );
   }
 
-  if (error || !chartData || !forecastRates || forecastRates.length === 0) {
+  if (error || !chartData || forecastRates.length === 0) {
     return (
       <View style={styles.container}>
         <View style={styles.header}>

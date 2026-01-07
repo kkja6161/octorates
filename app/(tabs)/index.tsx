@@ -544,6 +544,7 @@ export default function HomeScreen() {
                     colors={colors}
                     isDark={isDark}
                     thresholds={electricityThresholds}
+                    tomorrowRatesAvailable={tomorrowElectricityRates.length > 0}
                   />
                 )}
               </>
