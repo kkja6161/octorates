@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,8 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
+  PanResponder,
+  LayoutChangeEvent,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -36,8 +38,69 @@ export default function EVChargingScreen() {
   const { profiles, calculateCharging, addLogEntry, isLoading } = useEV();
 
   const [selectedProfileId, setSelectedProfileId] = useState<string>('');
-  const [currentCharge, setCurrentCharge] = useState<string>('');
-  const [targetCharge, setTargetCharge] = useState<string>('80');
+  const [currentCharge, setCurrentCharge] = useState<number>(20);
+  const [targetCharge, setTargetCharge] = useState<number>(80);
+  const [sliderWidth, setSliderWidth] = useState<number>(0);
+  
+  const activeHandle = useRef<'current' | 'target' | null>(null);
+  
+  const handleSliderLayout = useCallback((event: LayoutChangeEvent) => {
+    const { width } = event.nativeEvent.layout;
+    setSliderWidth(width);
+  }, []);
+  
+  const getPositionFromValue = useCallback((value: number) => {
+    return (value / 100) * sliderWidth;
+  }, [sliderWidth]);
+  
+  const getValueFromPosition = useCallback((position: number) => {
+    const value = Math.round((position / sliderWidth) * 100);
+    return Math.max(0, Math.min(100, value));
+  }, [sliderWidth]);
+  
+  const currentPanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => {
+        activeHandle.current = 'current';
+      },
+      onPanResponderMove: (_, gestureState) => {
+        if (sliderWidth === 0) return;
+        const currentPos = getPositionFromValue(currentCharge);
+        const newPos = currentPos + gestureState.dx;
+        const newValue = getValueFromPosition(newPos);
+        if (newValue < targetCharge - 5) {
+          setCurrentCharge(newValue);
+        }
+      },
+      onPanResponderRelease: () => {
+        activeHandle.current = null;
+      },
+    })
+  ).current;
+  
+  const targetPanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => {
+        activeHandle.current = 'target';
+      },
+      onPanResponderMove: (_, gestureState) => {
+        if (sliderWidth === 0) return;
+        const targetPos = getPositionFromValue(targetCharge);
+        const newPos = targetPos + gestureState.dx;
+        const newValue = getValueFromPosition(newPos);
+        if (newValue > currentCharge + 5) {
+          setTargetCharge(newValue);
+        }
+      },
+      onPanResponderRelease: () => {
+        activeHandle.current = null;
+      },
+    })
+  ).current;
   const [desiredFinishTime, setDesiredFinishTime] = useState<string>('07:00');
   const [calculation, setCalculation] = useState<ChargingCalculation | null>(null);
   const [note, setNote] = useState<string>('');
@@ -50,8 +113,8 @@ export default function EVChargingScreen() {
       return;
     }
 
-    const current = parseFloat(currentCharge);
-    const target = parseFloat(targetCharge);
+    const current = currentCharge;
+    const target = targetCharge;
 
     if (isNaN(current) || current < 0 || current > 100) {
       Alert.alert('Invalid Input', 'Current charge must be between 0 and 100%.');
@@ -86,7 +149,7 @@ export default function EVChargingScreen() {
       ]
     );
     setCalculation(null);
-    setCurrentCharge('');
+    setCurrentCharge(20);
     setNote('');
     console.log('[EVScreen] Saved log entry:', entry.id);
   }, [calculation, note, addLogEntry, router]);
@@ -220,37 +283,64 @@ export default function EVChargingScreen() {
             </View>
           )}
 
-          <View style={styles.inputRow}>
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Current Charge</Text>
-              <View style={styles.inputWrapper}>
-                <TextInput
-                  style={styles.input}
-                  value={currentCharge}
-                  onChangeText={setCurrentCharge}
-                  keyboardType="numeric"
-                  placeholder="0"
-                  placeholderTextColor={colors.text.tertiary}
-                  maxLength={3}
-                />
-                <Text style={styles.inputSuffix}>%</Text>
+          <View style={styles.chargeSliderContainer}>
+            <Text style={styles.label}>Charge Range</Text>
+            <View style={styles.chargeLabels}>
+              <View style={styles.chargeLabelBox}>
+                <Text style={styles.chargeLabelTitle}>Current</Text>
+                <Text style={styles.chargeLabelValue}>{currentCharge}%</Text>
+              </View>
+              <View style={[styles.chargeLabelBox, styles.chargeLabelBoxTarget]}>
+                <Text style={styles.chargeLabelTitle}>Target</Text>
+                <Text style={[styles.chargeLabelValue, { color: colors.primary }]}>{targetCharge}%</Text>
               </View>
             </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Target Charge</Text>
-              <View style={styles.inputWrapper}>
-                <TextInput
-                  style={styles.input}
-                  value={targetCharge}
-                  onChangeText={setTargetCharge}
-                  keyboardType="numeric"
-                  placeholder="80"
-                  placeholderTextColor={colors.text.tertiary}
-                  maxLength={3}
-                />
-                <Text style={styles.inputSuffix}>%</Text>
+            
+            <View 
+              style={styles.sliderContainer}
+              onLayout={handleSliderLayout}
+            >
+              <View style={styles.sliderTrack} />
+              <View 
+                style={[
+                  styles.sliderFill,
+                  {
+                    left: `${currentCharge}%`,
+                    width: `${targetCharge - currentCharge}%`,
+                    backgroundColor: colors.primary,
+                  }
+                ]} 
+              />
+              
+              <View
+                {...currentPanResponder.panHandlers}
+                style={[
+                  styles.sliderHandle,
+                  styles.sliderHandleCurrent,
+                  { left: `${currentCharge}%`, borderColor: colors.text.secondary }
+                ]}
+              >
+                <View style={[styles.sliderHandleInner, { backgroundColor: colors.text.secondary }]} />
               </View>
+              
+              <View
+                {...targetPanResponder.panHandlers}
+                style={[
+                  styles.sliderHandle,
+                  styles.sliderHandleTarget,
+                  { left: `${targetCharge}%`, borderColor: colors.primary }
+                ]}
+              >
+                <View style={[styles.sliderHandleInner, { backgroundColor: colors.primary }]} />
+              </View>
+            </View>
+            
+            <View style={styles.sliderScale}>
+              <Text style={styles.sliderScaleText}>0%</Text>
+              <Text style={styles.sliderScaleText}>25%</Text>
+              <Text style={styles.sliderScaleText}>50%</Text>
+              <Text style={styles.sliderScaleText}>75%</Text>
+              <Text style={styles.sliderScaleText}>100%</Text>
             </View>
           </View>
 
@@ -527,10 +617,90 @@ const createStyles = (colors: ReturnType<typeof useColors>) => StyleSheet.create
     color: colors.text.secondary,
     textAlign: 'center' as const,
   },
-  inputRow: {
+  chargeSliderContainer: {
+    marginBottom: 16,
+  },
+  chargeLabels: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 16,
     gap: 12,
-    marginBottom: 12,
+  },
+  chargeLabelBox: {
+    flex: 1,
+    backgroundColor: colors.background,
+    borderRadius: 12,
+    padding: 12,
+    alignItems: 'center',
+  },
+  chargeLabelBoxTarget: {
+    backgroundColor: colors.primary + '10',
+  },
+  chargeLabelTitle: {
+    fontSize: 12,
+    color: colors.text.secondary,
+    fontWeight: '500' as const,
+    marginBottom: 4,
+  },
+  chargeLabelValue: {
+    fontSize: 28,
+    fontWeight: '700' as const,
+    color: colors.text.primary,
+  },
+  sliderContainer: {
+    height: 44,
+    justifyContent: 'center',
+    marginHorizontal: 14,
+  },
+  sliderTrack: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: 6,
+    backgroundColor: colors.border,
+    borderRadius: 3,
+  },
+  sliderFill: {
+    position: 'absolute',
+    height: 6,
+    borderRadius: 3,
+  },
+  sliderHandle: {
+    position: 'absolute',
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.surface,
+    borderWidth: 3,
+    marginLeft: -14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  sliderHandleCurrent: {
+    zIndex: 2,
+  },
+  sliderHandleTarget: {
+    zIndex: 3,
+  },
+  sliderHandleInner: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  sliderScale: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8,
+    paddingHorizontal: 0,
+  },
+  sliderScaleText: {
+    fontSize: 11,
+    color: colors.text.tertiary,
   },
   inputGroup: {
     flex: 1,
