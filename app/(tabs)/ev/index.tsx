@@ -42,41 +42,39 @@ export default function EVChargingScreen() {
   const [targetCharge, setTargetCharge] = useState<number>(80);
   const [sliderWidth, setSliderWidth] = useState<number>(0);
   
-  const activeHandle = useRef<'current' | 'target' | null>(null);
+  const currentChargeRef = useRef(currentCharge);
+  const targetChargeRef = useRef(targetCharge);
+  const sliderWidthRef = useRef(sliderWidth);
+  const startValueRef = useRef<number>(0);
+  
+  currentChargeRef.current = currentCharge;
+  targetChargeRef.current = targetCharge;
+  sliderWidthRef.current = sliderWidth;
   
   const handleSliderLayout = useCallback((event: LayoutChangeEvent) => {
     const { width } = event.nativeEvent.layout;
     setSliderWidth(width);
   }, []);
   
-  const getPositionFromValue = useCallback((value: number) => {
-    return (value / 100) * sliderWidth;
-  }, [sliderWidth]);
-  
-  const getValueFromPosition = useCallback((position: number) => {
-    const value = Math.round((position / sliderWidth) * 100);
-    return Math.max(0, Math.min(100, value));
-  }, [sliderWidth]);
-  
   const currentPanResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
       onPanResponderGrant: () => {
-        activeHandle.current = 'current';
+        startValueRef.current = currentChargeRef.current;
       },
       onPanResponderMove: (_, gestureState) => {
-        if (sliderWidth === 0) return;
-        const currentPos = getPositionFromValue(currentCharge);
-        const newPos = currentPos + gestureState.dx;
-        const newValue = getValueFromPosition(newPos);
-        if (newValue < targetCharge - 5) {
-          setCurrentCharge(newValue);
+        const width = sliderWidthRef.current;
+        if (width === 0) return;
+        const startPos = (startValueRef.current / 100) * width;
+        const newPos = startPos + gestureState.dx;
+        const newValue = Math.round((newPos / width) * 100);
+        const clampedValue = Math.max(0, Math.min(100, newValue));
+        if (clampedValue < targetChargeRef.current - 5) {
+          setCurrentCharge(clampedValue);
         }
       },
-      onPanResponderRelease: () => {
-        activeHandle.current = null;
-      },
+      onPanResponderRelease: () => {},
     })
   ).current;
   
@@ -85,20 +83,20 @@ export default function EVChargingScreen() {
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
       onPanResponderGrant: () => {
-        activeHandle.current = 'target';
+        startValueRef.current = targetChargeRef.current;
       },
       onPanResponderMove: (_, gestureState) => {
-        if (sliderWidth === 0) return;
-        const targetPos = getPositionFromValue(targetCharge);
-        const newPos = targetPos + gestureState.dx;
-        const newValue = getValueFromPosition(newPos);
-        if (newValue > currentCharge + 5) {
-          setTargetCharge(newValue);
+        const width = sliderWidthRef.current;
+        if (width === 0) return;
+        const startPos = (startValueRef.current / 100) * width;
+        const newPos = startPos + gestureState.dx;
+        const newValue = Math.round((newPos / width) * 100);
+        const clampedValue = Math.max(0, Math.min(100, newValue));
+        if (clampedValue > currentChargeRef.current + 5) {
+          setTargetCharge(clampedValue);
         }
       },
-      onPanResponderRelease: () => {
-        activeHandle.current = null;
-      },
+      onPanResponderRelease: () => {},
     })
   ).current;
   const [desiredFinishTime, setDesiredFinishTime] = useState<string>('07:00');
