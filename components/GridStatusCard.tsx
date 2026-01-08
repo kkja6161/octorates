@@ -66,6 +66,8 @@ export function GridStatusCard({ colors, isDark }: GridStatusCardProps) {
       'nuclear': 'Nuclear',
       'other': 'Other',
       'hydro': 'Hydro',
+      'hydroelectric': 'Hydro',
+      'pumped storage': 'Pumped Storage',
       'solar': 'Solar',
       'wind': 'Wind',
     };

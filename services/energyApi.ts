@@ -805,7 +805,7 @@ export async function fetchConsumption(
 
 const CARBON_INTENSITY_API = 'https://api.carbonintensity.org.uk';
 
-const RENEWABLE_FUELS = ['wind', 'solar', 'hydro', 'biomass'];
+const RENEWABLE_FUELS = ['wind', 'solar', 'hydro', 'biomass', 'hydroelectric', 'pumped storage'];
 
 export async function fetchGridStatus(): Promise<GridStatusData | null> {
   console.log('[Energy API] ========== FETCH GRID STATUS ==========');
