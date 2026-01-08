@@ -832,7 +832,11 @@ export async function fetchGridStatus(): Promise<GridStatusData | null> {
     const intensity = intensityData.data[0];
     const mix = generationData.data.generationmix;
     
-    console.log('[Energy API] Raw generation mix fuels:', mix.map(m => `${m.fuel}: ${m.perc}%`).join(', '));
+    console.log('[Energy API] ========== GENERATION MIX VALUES ==========');
+    mix.forEach(m => {
+      console.log(`[Energy API] ${m.fuel}: ${m.perc}%`);
+    });
+    console.log('[Energy API] ===============================================');
     
     const renewablePercentage = mix
       .filter(item => RENEWABLE_FUELS.includes(item.fuel.toLowerCase()))
