@@ -105,7 +105,50 @@ export default function EVChargingScreen() {
       onPanResponderRelease: () => {},
     })
   ).current;
-  const [desiredFinishTime, setDesiredFinishTime] = useState<string>('07:00');
+  const [finishTimeMinutes, setFinishTimeMinutes] = useState<number>(420);
+  const finishTimeMinutesRef = useRef(finishTimeMinutes);
+  finishTimeMinutesRef.current = finishTimeMinutes;
+  const [timeSliderWidth, setTimeSliderWidth] = useState<number>(0);
+  const timeSliderWidthRef = useRef(timeSliderWidth);
+  timeSliderWidthRef.current = timeSliderWidth;
+  const timeStartValueRef = useRef<number>(0);
+  
+  const handleTimeSliderLayout = useCallback((event: LayoutChangeEvent) => {
+    const { width } = event.nativeEvent.layout;
+    setTimeSliderWidth(width);
+  }, []);
+  
+  const timePanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onStartShouldSetPanResponderCapture: () => true,
+      onMoveShouldSetPanResponderCapture: () => true,
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderGrant: () => {
+        timeStartValueRef.current = finishTimeMinutesRef.current;
+      },
+      onPanResponderMove: (_, gestureState) => {
+        const width = timeSliderWidthRef.current;
+        if (width === 0) return;
+        const maxMinutes = 1440;
+        const startPos = (timeStartValueRef.current / maxMinutes) * width;
+        const newPos = startPos + gestureState.dx;
+        const newValue = Math.round((newPos / width) * maxMinutes / 30) * 30;
+        const clampedValue = Math.max(0, Math.min(1410, newValue));
+        setFinishTimeMinutes(clampedValue);
+      },
+      onPanResponderRelease: () => {},
+    })
+  ).current;
+  
+  const formatMinutesToTime = (minutes: number): string => {
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+  };
+  
+  const desiredFinishTime = formatMinutesToTime(finishTimeMinutes);
   const [calculation, setCalculation] = useState<ChargingCalculation | null>(null);
   const [note, setNote] = useState<string>('');
 
@@ -348,19 +391,51 @@ export default function EVChargingScreen() {
             </View>
           </View>
 
-          <View style={styles.inputGroup}>
+          <View style={styles.timeSliderContainer}>
             <Text style={styles.label}>Desired Finish Time</Text>
-            <View style={styles.inputWrapper}>
-              <TextInput
-                style={styles.input}
-                value={desiredFinishTime}
-                onChangeText={setDesiredFinishTime}
-                placeholder="07:00"
-                placeholderTextColor={colors.text.tertiary}
-                maxLength={5}
-              />
+            <View style={styles.timeDisplayBox}>
+              <Clock size={20} color={colors.primary} />
+              <Text style={styles.timeDisplayValue}>{desiredFinishTime}</Text>
+              <Text style={styles.timeDisplayLabel}>
+                {finishTimeMinutes < 360 ? 'Early morning' : 
+                 finishTimeMinutes < 720 ? 'Morning' : 
+                 finishTimeMinutes < 1080 ? 'Afternoon' : 'Evening'}
+              </Text>
             </View>
-            <Text style={styles.helpText}>24-hour format (e.g., 07:00 or 18:30)</Text>
+            
+            <View 
+              style={styles.timeSliderOuter}
+              onLayout={handleTimeSliderLayout}
+            >
+              <View style={styles.timeSliderTrack} />
+              <View 
+                style={[
+                  styles.timeSliderFill,
+                  {
+                    width: `${(finishTimeMinutes / 1440) * 100}%`,
+                    backgroundColor: colors.primary,
+                  }
+                ]} 
+              />
+              
+              <View
+                {...timePanResponder.panHandlers}
+                style={[
+                  styles.timeSliderHandle,
+                  { left: `${(finishTimeMinutes / 1440) * 100}%`, borderColor: colors.primary }
+                ]}
+              >
+                <View style={[styles.sliderHandleInner, { backgroundColor: colors.primary }]} />
+              </View>
+            </View>
+            
+            <View style={styles.timeSliderScale}>
+              <Text style={styles.sliderScaleText}>00:00</Text>
+              <Text style={styles.sliderScaleText}>06:00</Text>
+              <Text style={styles.sliderScaleText}>12:00</Text>
+              <Text style={styles.sliderScaleText}>18:00</Text>
+              <Text style={styles.sliderScaleText}>24:00</Text>
+            </View>
           </View>
 
           <TouchableOpacity 
@@ -706,34 +781,70 @@ const createStyles = (colors: ReturnType<typeof useColors>) => StyleSheet.create
     fontSize: 11,
     color: colors.text.tertiary,
   },
-  inputGroup: {
-    flex: 1,
+  timeSliderContainer: {
+    marginBottom: 16,
   },
-  inputWrapper: {
+  timeDisplayBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.background,
+    justifyContent: 'center',
+    backgroundColor: colors.primary + '10',
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: 14,
+    padding: 16,
+    marginBottom: 16,
+    gap: 12,
   },
-  input: {
-    flex: 1,
-    fontSize: 24,
-    fontWeight: '600' as const,
-    color: colors.text.primary,
-    paddingVertical: 12,
+  timeDisplayValue: {
+    fontSize: 32,
+    fontWeight: '700' as const,
+    color: colors.primary,
   },
-  inputSuffix: {
-    fontSize: 18,
-    color: colors.text.tertiary,
+  timeDisplayLabel: {
+    fontSize: 14,
+    color: colors.text.secondary,
     fontWeight: '500' as const,
   },
-  helpText: {
-    fontSize: 12,
-    color: colors.text.tertiary,
-    marginTop: 6,
+  timeSliderOuter: {
+    height: 44,
+    justifyContent: 'center',
+    marginHorizontal: 14,
+  },
+  timeSliderTrack: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: 6,
+    backgroundColor: colors.border,
+    borderRadius: 3,
+  },
+  timeSliderFill: {
+    position: 'absolute',
+    left: 0,
+    height: 6,
+    borderRadius: 3,
+  },
+  timeSliderHandle: {
+    position: 'absolute',
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.surface,
+    borderWidth: 3,
+    marginLeft: -14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 4,
+    zIndex: 5,
+  },
+  timeSliderScale: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8,
+    paddingHorizontal: 0,
   },
   calculateButton: {
     flexDirection: 'row',
