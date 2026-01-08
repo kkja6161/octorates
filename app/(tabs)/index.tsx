@@ -388,9 +388,8 @@ export default function HomeScreen() {
             >
               <View style={styles.fuelTypeContent}>
                 <View style={styles.fuelTypeIconContainer}>
-                  <Zap size={32} color={colors.primary} />
+                  <Zap size={27} color={colors.primary} />
                 </View>
-                <Text style={[styles.fuelTypeLabel, expandedFuelType === 'electricity' && styles.fuelTypeLabelExpanded]}>Electricity</Text>
                 {currentElectricityRate ? (
                   <Text style={[styles.fuelTypePrice, expandedFuelType === 'electricity' && styles.fuelTypePriceExpanded]}>
                     {formatPrice(currentElectricityRate.price)}
@@ -410,9 +409,8 @@ export default function HomeScreen() {
               >
                 <View style={styles.fuelTypeContent}>
                   <View style={[styles.fuelTypeIconContainer, styles.fuelTypeIconContainerGas]}>
-                    <Flame size={32} color={colors.gasColor} />
+                    <Flame size={27} color={colors.gasColor} />
                   </View>
-                  <Text style={[styles.fuelTypeLabel, expandedFuelType === 'gas' && styles.fuelTypeLabelExpanded]}>Gas</Text>
                   {currentGasRate ? (
                     <Text style={[styles.fuelTypePrice, expandedFuelType === 'gas' && styles.fuelTypePriceExpanded]}>
                       {formatPrice(currentGasRate.price)}
