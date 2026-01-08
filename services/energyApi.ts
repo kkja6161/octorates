@@ -857,7 +857,7 @@ export async function fetchGridStatus(): Promise<GridStatusData | null> {
   }
 }
 
-const AGILE_PREDICT_API = 'https://agilepredict.com/api';
+const AGILE_PREDICT_API = 'https://prices.fly.dev/api';
 
 export async function fetchAgilePrediction(
   region: string = 'C',
