@@ -605,7 +605,7 @@ export default function SettingsScreen() {
 
             <View style={styles.versionCard}>
               <Text style={styles.versionLabel}>Version</Text>
-              <Text style={styles.versionValue}>1.0.5</Text>
+              <Text style={styles.versionValue}>1.0.6</Text>
             </View>
           </View>
 

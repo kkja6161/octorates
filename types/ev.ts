@@ -1,3 +1,5 @@
+export type SlotMode = 'individual' | 'continuous';
+
 export interface EVProfile {
   id: string;
   name: string;

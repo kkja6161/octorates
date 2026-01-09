@@ -2,7 +2,7 @@ import createContextHook from '@nkzw/create-context-hook';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { EVProfile, ChargingLogEntry, ChargingCalculation, ChargingSlot } from '@/types/ev';
+import { EVProfile, ChargingLogEntry, ChargingCalculation, ChargingSlot, SlotMode } from '@/types/ev';
 import { useEnergyRates } from '@/providers/EnergyRatesProvider';
 import { ProcessedRate } from '@/types/energy';
 
@@ -120,7 +120,8 @@ export const [EVProvider, useEV] = createContextHook(() => {
     profileId: string,
     currentCharge: number,
     targetCharge: number,
-    desiredFinishTime?: string
+    desiredFinishTime?: string,
+    slotMode: SlotMode = 'individual'
   ): ChargingCalculation | null => {
     const profile = profiles.find(p => p.id === profileId);
     if (!profile) {
@@ -173,31 +174,81 @@ export const [EVProvider, useEV] = createContextHook(() => {
       };
     }
 
-    const sortedRates = [...availableRates].sort((a, b) => a.price - b.price);
-    const cheapestSlots: ChargingSlot[] = [];
+    let cheapestSlots: ChargingSlot[] = [];
     let totalCost = 0;
-    let energyRemaining = energyNeeded;
-    
-    for (let i = 0; i < Math.min(slotsNeeded, sortedRates.length) && energyRemaining > 0; i++) {
-      const rate = sortedRates[i];
-      const slotDuration = 30; // minutes
-      const maxEnergyThisSlot = (profile.maxChargingRate * slotDuration) / 60;
-      const energyThisSlot = Math.min(maxEnergyThisSlot, energyRemaining);
-      const costThisSlot = (energyThisSlot * rate.price);
 
-      cheapestSlots.push({
-        startTime: rate.validFrom,
-        endTime: rate.validTo,
-        rate: rate.price,
-        energyCharged: energyThisSlot,
-        cost: costThisSlot,
-      });
+    if (slotMode === 'continuous') {
+      const chronologicalRates = [...availableRates].sort((a, b) => 
+        a.validFrom.getTime() - b.validFrom.getTime()
+      );
 
-      totalCost += costThisSlot;
-      energyRemaining -= energyThisSlot;
+      let bestWindowStart = 0;
+      let bestWindowCost = Infinity;
+
+      for (let i = 0; i <= chronologicalRates.length - slotsNeeded; i++) {
+        let windowCost = 0;
+        let windowEnergyRemaining = energyNeeded;
+        
+        for (let j = 0; j < slotsNeeded && windowEnergyRemaining > 0; j++) {
+          const rate = chronologicalRates[i + j];
+          const slotDuration = 30;
+          const maxEnergyThisSlot = (profile.maxChargingRate * slotDuration) / 60;
+          const energyThisSlot = Math.min(maxEnergyThisSlot, windowEnergyRemaining);
+          windowCost += energyThisSlot * rate.price;
+          windowEnergyRemaining -= energyThisSlot;
+        }
+
+        if (windowCost < bestWindowCost) {
+          bestWindowCost = windowCost;
+          bestWindowStart = i;
+        }
+      }
+
+      let energyRemaining = energyNeeded;
+      for (let j = 0; j < slotsNeeded && energyRemaining > 0; j++) {
+        const rate = chronologicalRates[bestWindowStart + j];
+        if (!rate) break;
+        const slotDuration = 30;
+        const maxEnergyThisSlot = (profile.maxChargingRate * slotDuration) / 60;
+        const energyThisSlot = Math.min(maxEnergyThisSlot, energyRemaining);
+        const costThisSlot = energyThisSlot * rate.price;
+
+        cheapestSlots.push({
+          startTime: rate.validFrom,
+          endTime: rate.validTo,
+          rate: rate.price,
+          energyCharged: energyThisSlot,
+          cost: costThisSlot,
+        });
+
+        totalCost += costThisSlot;
+        energyRemaining -= energyThisSlot;
+      }
+    } else {
+      const sortedRates = [...availableRates].sort((a, b) => a.price - b.price);
+      let energyRemaining = energyNeeded;
+      
+      for (let i = 0; i < Math.min(slotsNeeded, sortedRates.length) && energyRemaining > 0; i++) {
+        const rate = sortedRates[i];
+        const slotDuration = 30;
+        const maxEnergyThisSlot = (profile.maxChargingRate * slotDuration) / 60;
+        const energyThisSlot = Math.min(maxEnergyThisSlot, energyRemaining);
+        const costThisSlot = energyThisSlot * rate.price;
+
+        cheapestSlots.push({
+          startTime: rate.validFrom,
+          endTime: rate.validTo,
+          rate: rate.price,
+          energyCharged: energyThisSlot,
+          cost: costThisSlot,
+        });
+
+        totalCost += costThisSlot;
+        energyRemaining -= energyThisSlot;
+      }
+
+      cheapestSlots.sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
     }
-
-    cheapestSlots.sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
 
     const bestStartTime = cheapestSlots.length > 0 ? cheapestSlots[0].startTime : new Date();
     const bestEndTime = cheapestSlots.length > 0 

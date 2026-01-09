@@ -29,7 +29,7 @@ import {
 import { useTheme } from '@/providers/ThemeProvider';
 import { useColors } from '@/constants/colors';
 import { useEV } from '@/providers/EVProvider';
-import { ChargingCalculation, ChargingSlot } from '@/types/ev';
+import { ChargingCalculation, ChargingSlot, SlotMode } from '@/types/ev';
 
 export default function EVChargingScreen() {
   const router = useRouter();
@@ -151,6 +151,7 @@ export default function EVChargingScreen() {
   const desiredFinishTime = formatMinutesToTime(finishTimeMinutes);
   const [calculation, setCalculation] = useState<ChargingCalculation | null>(null);
   const [note, setNote] = useState<string>('');
+  const [slotMode, setSlotMode] = useState<SlotMode>('individual');
 
   const selectedProfile = profiles.find(p => p.id === selectedProfileId);
 
@@ -178,10 +179,10 @@ export default function EVChargingScreen() {
       return;
     }
 
-    const result = calculateCharging(selectedProfileId, current, target, desiredFinishTime);
+    const result = calculateCharging(selectedProfileId, current, target, desiredFinishTime, slotMode);
     setCalculation(result);
     console.log('[EVScreen] Calculation result:', result);
-  }, [selectedProfileId, currentCharge, targetCharge, desiredFinishTime, calculateCharging]);
+  }, [selectedProfileId, currentCharge, targetCharge, desiredFinishTime, slotMode, calculateCharging]);
 
   const handleSaveToLog = useCallback(() => {
     if (!calculation) return;
@@ -391,6 +392,44 @@ export default function EVChargingScreen() {
             </View>
           </View>
 
+          <View style={styles.slotModeContainer}>
+            <Text style={styles.label}>Charging Mode</Text>
+            <View style={styles.slotModeToggle}>
+              <TouchableOpacity
+                style={[
+                  styles.slotModeOption,
+                  slotMode === 'individual' && styles.slotModeOptionActive,
+                ]}
+                onPress={() => setSlotMode('individual')}
+              >
+                <Text style={[
+                  styles.slotModeOptionText,
+                  slotMode === 'individual' && styles.slotModeOptionTextActive,
+                ]}>Best Individual</Text>
+                <Text style={[
+                  styles.slotModeDescription,
+                  slotMode === 'individual' && styles.slotModeDescriptionActive,
+                ]}>Cheapest slots</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.slotModeOption,
+                  slotMode === 'continuous' && styles.slotModeOptionActive,
+                ]}
+                onPress={() => setSlotMode('continuous')}
+              >
+                <Text style={[
+                  styles.slotModeOptionText,
+                  slotMode === 'continuous' && styles.slotModeOptionTextActive,
+                ]}>Continuous</Text>
+                <Text style={[
+                  styles.slotModeDescription,
+                  slotMode === 'continuous' && styles.slotModeDescriptionActive,
+                ]}>Uninterrupted</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
           <View style={styles.timeSliderContainer}>
             <Text style={styles.label}>Desired Finish Time</Text>
             <View style={styles.timeDisplayBox}>
@@ -460,9 +499,12 @@ export default function EVChargingScreen() {
             <View style={styles.resultHeader}>
               <BatteryCharging size={24} color={colors.success} />
               <View style={styles.resultHeaderText}>
-                <Text style={styles.resultTitle}>Optimal Charging Window</Text>
+                <Text style={styles.resultTitle}>
+                  {slotMode === 'continuous' ? 'Best Continuous Window' : 'Optimal Charging Slots'}
+                </Text>
                 <Text style={styles.resultSubtitle}>
                   {formatDate(calculation.bestStartTime)} • {calculation.cheapestSlots.length} slots
+                  {slotMode === 'continuous' ? ' • Uninterrupted' : ' • Lowest rates'}
                   {calculation.desiredFinishTime && ` • Ready by ${formatTime(calculation.desiredFinishTime)}`}
                 </Text>
               </View>
@@ -506,9 +548,11 @@ export default function EVChargingScreen() {
 
             {calculation.cheapestSlots.length > 0 && (
               <View style={styles.slotsContainer}>
-                <Text style={styles.slotsTitle}>Charging Slots</Text>
-                {calculation.cheapestSlots.slice(0, 6).map((slot: ChargingSlot, index: number) => (
-                  <View key={index} style={styles.slotRow}>
+                <Text style={styles.slotsTitle}>
+                  {slotMode === 'continuous' ? 'Continuous Charging Period' : 'All Charging Slots'}
+                </Text>
+                {calculation.cheapestSlots.map((slot: ChargingSlot, index: number) => (
+                  <View key={index} style={[styles.slotRow, index === calculation.cheapestSlots.length - 1 && styles.slotRowLast]}>
                     <Text style={styles.slotTime}>
                       {formatTime(slot.startTime)} - {formatTime(slot.endTime)}
                     </Text>
@@ -516,11 +560,6 @@ export default function EVChargingScreen() {
                     <Text style={styles.slotEnergy}>{slot.energyCharged.toFixed(1)} kWh</Text>
                   </View>
                 ))}
-                {calculation.cheapestSlots.length > 6 && (
-                  <Text style={styles.moreSlots}>
-                    +{calculation.cheapestSlots.length - 6} more slots
-                  </Text>
-                )}
               </View>
             )}
 
@@ -948,11 +987,44 @@ const createStyles = (colors: ReturnType<typeof useColors>) => StyleSheet.create
     color: colors.text.secondary,
     textAlign: 'right' as const,
   },
-  moreSlots: {
-    fontSize: 13,
+  slotRowLast: {
+    borderBottomWidth: 0,
+  },
+  slotModeContainer: {
+    marginBottom: 16,
+  },
+  slotModeToggle: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  slotModeOption: {
+    flex: 1,
+    backgroundColor: colors.background,
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 2,
+    borderColor: colors.border,
+    alignItems: 'center',
+  },
+  slotModeOptionActive: {
+    backgroundColor: colors.primary + '15',
+    borderColor: colors.primary,
+  },
+  slotModeOptionText: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+    color: colors.text.secondary,
+    marginBottom: 2,
+  },
+  slotModeOptionTextActive: {
+    color: colors.primary,
+  },
+  slotModeDescription: {
+    fontSize: 12,
     color: colors.text.tertiary,
-    textAlign: 'center' as const,
-    marginTop: 8,
+  },
+  slotModeDescriptionActive: {
+    color: colors.primary,
   },
   noteContainer: {
     marginBottom: 16,
