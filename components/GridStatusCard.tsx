@@ -238,7 +238,7 @@ export function GridStatusCard({ colors, isDark }: GridStatusCardProps) {
         <View style={styles.expandedContent}>
           <Text style={styles.sectionTitle}>Generation Mix</Text>
           <View style={styles.mixGrid}>
-            {sortedMix.filter(item => item.perc > 0).map((item) => (
+            {sortedMix.map((item) => (
               <View key={item.fuel} style={styles.mixItem}>
                 <Text style={styles.mixFuel}>{formatFuelName(item.fuel)}</Text>
                 <Text style={styles.mixPerc}>{item.perc.toFixed(1)}%</Text>
