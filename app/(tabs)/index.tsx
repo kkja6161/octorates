@@ -17,7 +17,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useEnergyRates } from '@/providers/EnergyRatesProvider';
 import { useConsumption } from '@/providers/ConsumptionProvider';
 import { useComparisonRate } from '@/hooks/useComparisonRate';
-import { useColors } from '@/constants/colors';
+import { useAccessibleColors } from '@/hooks/useAccessibleStyles';
+import { useAccessibility } from '@/providers/AccessibilityProvider';
 import { ProcessedRate } from '@/types/energy';
 import { getRateThresholdLevel, getThresholdColor } from '@/utils/thresholds';
 import { getTariffDisplayName } from '@/utils/tariffNames';
@@ -52,7 +53,8 @@ export default function HomeScreen() {
   const { comparisonElectricityRate, comparisonGasRate, comparisonElectricityTariffName, comparisonGasTariffName } = useComparisonRate();
   
   const { isDark } = useTheme();
-  const colors = useColors(isDark);
+  const { isHighContrast, scaleFontSize, scaleSpacing, isBoldText } = useAccessibility();
+  const colors = useAccessibleColors();
   const insets = useSafeAreaInsets();
   const [expandedFuelType, setExpandedFuelType] = useState<'electricity' | 'gas' | null>('electricity');
   
@@ -106,56 +108,68 @@ export default function HomeScreen() {
     return cheaperPeriods;
   }, [expandedFuelType, tomorrowElectricityRates, tomorrowGasRates]);
 
+  const cardBorderWidth = isHighContrast ? 2 : 0;
+  const baseSpacing = scaleSpacing(16);
+  const fontWeightNormal = isBoldText ? '600' as const : '500' as const;
+  const fontWeightBold = isBoldText ? '800' as const : '700' as const;
+
   const styles = StyleSheet.create({
     container: {
       flex: 1,
       backgroundColor: colors.background,
     },
     topSection: {
-      paddingHorizontal: 16,
-      paddingBottom: 16,
+      paddingHorizontal: baseSpacing,
+      paddingBottom: baseSpacing,
       backgroundColor: colors.background,
     },
     headerRow: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      marginBottom: 16,
+      marginBottom: baseSpacing,
     },
     dashboardTitle: {
-      fontSize: 32,
-      fontWeight: '700' as const,
+      fontSize: scaleFontSize(32),
+      fontWeight: fontWeightBold,
     },
     settingsButton: {
-      padding: 8,
+      padding: scaleSpacing(8),
+      minWidth: 44,
+      minHeight: 44,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     fuelTypesContainer: {
       flexDirection: 'row',
-      gap: 12,
+      gap: scaleSpacing(12),
     },
     fuelTypeBox: {
       flex: 1,
       backgroundColor: colors.surface,
       borderRadius: 16,
-      padding: 16,
+      padding: baseSpacing,
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 2 },
       shadowOpacity: isDark ? 0.3 : 0.08,
       shadowRadius: 8,
       elevation: 3,
+      borderWidth: cardBorderWidth,
+      borderColor: colors.border,
     },
     fuelTypeBoxExpanded: {
       backgroundColor: colors.primary,
       transform: [{ scale: 1.02 }],
+      borderColor: colors.primary,
     },
     fuelTypeContent: {
       alignItems: 'center',
-      gap: 12,
+      gap: scaleSpacing(12),
     },
     fuelTypeIconContainer: {
-      width: 56,
-      height: 56,
-      borderRadius: 28,
+      width: scaleSpacing(56),
+      height: scaleSpacing(56),
+      borderRadius: scaleSpacing(28),
       backgroundColor: colors.background,
       alignItems: 'center',
       justifyContent: 'center',
@@ -164,23 +178,23 @@ export default function HomeScreen() {
       backgroundColor: colors.gasBackground,
     },
     fuelTypeLabel: {
-      fontSize: 13,
+      fontSize: scaleFontSize(13),
       color: colors.text.secondary,
-      fontWeight: '600' as const,
+      fontWeight: fontWeightNormal,
     },
     fuelTypeLabelExpanded: {
       color: '#FFFFFF',
     },
     fuelTypePrice: {
-      fontSize: 22,
-      fontWeight: '700' as const,
+      fontSize: scaleFontSize(22),
+      fontWeight: fontWeightBold,
       color: colors.text.primary,
     },
     fuelTypePriceExpanded: {
       color: '#FFFFFF',
     },
     fuelTypeNoData: {
-      fontSize: 14,
+      fontSize: scaleFontSize(14),
       color: colors.text.secondary,
       fontStyle: 'italic' as const,
     },
@@ -191,33 +205,35 @@ export default function HomeScreen() {
       flex: 1,
     },
     scrollContent: {
-      padding: 20,
-      gap: 16,
+      padding: scaleSpacing(20),
+      gap: baseSpacing,
     },
     barGraphCard: {
       backgroundColor: colors.surface,
       borderRadius: 16,
-      padding: 16,
-      gap: 12,
+      padding: baseSpacing,
+      gap: scaleSpacing(12),
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 2 },
       shadowOpacity: isDark ? 0.3 : 0.08,
       shadowRadius: 8,
       elevation: 3,
+      borderWidth: cardBorderWidth,
+      borderColor: colors.border,
     },
     sectionTitle: {
-      fontSize: 20,
-      fontWeight: '700' as const,
+      fontSize: scaleFontSize(20),
+      fontWeight: fontWeightBold,
       color: colors.text.primary,
-      marginBottom: 8,
+      marginBottom: scaleSpacing(8),
     },
     chartContainer: {
-      paddingVertical: 12,
-      gap: 8,
+      paddingVertical: scaleSpacing(12),
+      gap: scaleSpacing(8),
     },
     barContainer: {
       alignItems: 'center',
-      gap: 8,
+      gap: scaleSpacing(8),
       minWidth: 50,
     },
     bar: {
@@ -225,67 +241,71 @@ export default function HomeScreen() {
       borderRadius: 8,
     },
     barPrice: {
-      fontSize: 13,
+      fontSize: scaleFontSize(13),
       color: colors.text.secondary,
-      fontWeight: '600' as const,
+      fontWeight: fontWeightNormal,
     },
     barTime: {
-      fontSize: 13,
+      fontSize: scaleFontSize(13),
       color: colors.text.secondary,
     },
     barTimeCurrent: {
       color: colors.primary,
-      fontWeight: '700' as const,
+      fontWeight: fontWeightBold,
     },
     gasDailyRatesContainer: {
       flexDirection: 'row',
-      gap: 12,
+      gap: scaleSpacing(12),
     },
     dailyRateCard: {
       flex: 1,
       backgroundColor: colors.surface,
       borderRadius: 16,
-      padding: 20,
+      padding: scaleSpacing(20),
       alignItems: 'center',
-      gap: 12,
+      gap: scaleSpacing(12),
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 2 },
       shadowOpacity: isDark ? 0.3 : 0.08,
       shadowRadius: 8,
       elevation: 3,
+      borderWidth: cardBorderWidth,
+      borderColor: colors.border,
     },
     dailyRateTitle: {
-      fontSize: 16,
+      fontSize: scaleFontSize(16),
       color: colors.text.secondary,
-      fontWeight: '600' as const,
+      fontWeight: fontWeightNormal,
       textTransform: 'uppercase' as const,
-      letterSpacing: 0.5,
+      letterSpacing: isHighContrast ? 1 : 0.5,
     },
     dailyRatePrice: {
-      fontSize: 34,
-      fontWeight: '700' as const,
+      fontSize: scaleFontSize(34),
+      fontWeight: fontWeightBold,
       color: colors.gasColor,
     },
     dailyRateDate: {
-      fontSize: 14,
+      fontSize: scaleFontSize(14),
       color: colors.text.secondary,
     },
     flexibleComparisonCard: {
       backgroundColor: colors.surface,
       borderRadius: 16,
-      padding: 20,
-      gap: 16,
+      padding: scaleSpacing(20),
+      gap: baseSpacing,
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 2 },
       shadowOpacity: isDark ? 0.3 : 0.08,
       shadowRadius: 8,
       elevation: 3,
+      borderWidth: cardBorderWidth,
+      borderColor: colors.border,
     },
     comparisonCardTitle: {
-      fontSize: 18,
-      fontWeight: '700' as const,
+      fontSize: scaleFontSize(18),
+      fontWeight: fontWeightBold,
       color: colors.text.primary,
-      marginBottom: 8,
+      marginBottom: scaleSpacing(8),
     },
     flexibleRateRow: {
       flexDirection: 'row',
@@ -293,29 +313,29 @@ export default function HomeScreen() {
       alignItems: 'center',
     },
     flexibleLabel: {
-      fontSize: 14,
+      fontSize: scaleFontSize(14),
       color: colors.text.secondary,
-      fontWeight: '500' as const,
+      fontWeight: fontWeightNormal,
     },
     flexibleRate: {
-      fontSize: 16,
-      fontWeight: '600' as const,
+      fontSize: scaleFontSize(16),
+      fontWeight: fontWeightNormal,
       color: colors.text.primary,
     },
     flexibleDifferenceRow: {
-      borderTopWidth: 1,
+      borderTopWidth: isHighContrast ? 2 : 1,
       borderTopColor: colors.border,
-      paddingTop: 16,
-      marginTop: 4,
+      paddingTop: baseSpacing,
+      marginTop: scaleSpacing(4),
     },
     flexibleDifferenceLabel: {
-      fontSize: 14,
+      fontSize: scaleFontSize(14),
       color: colors.text.primary,
-      fontWeight: '700' as const,
+      fontWeight: fontWeightBold,
     },
     flexibleDifference: {
-      fontSize: 18,
-      fontWeight: '700' as const,
+      fontSize: scaleFontSize(18),
+      fontWeight: fontWeightBold,
     },
     flexibleSaving: {
       color: colors.success,
@@ -324,40 +344,40 @@ export default function HomeScreen() {
       color: colors.error,
     },
     cheaperThanGasText: {
-      fontWeight: '700' as const,
+      fontWeight: fontWeightBold,
       color: colors.text.primary,
     },
     cheaperThanGasCard: {
-      marginTop: 16,
-      paddingTop: 16,
-      borderTopWidth: 1,
+      marginTop: baseSpacing,
+      paddingTop: baseSpacing,
+      borderTopWidth: isHighContrast ? 2 : 1,
     },
     cheaperThanGasTitle: {
-      fontSize: 15,
-      fontWeight: '700' as const,
-      marginBottom: 12,
+      fontSize: scaleFontSize(15),
+      fontWeight: fontWeightBold,
+      marginBottom: scaleSpacing(12),
     },
     cheaperPeriodRow: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      paddingVertical: 6,
+      paddingVertical: scaleSpacing(6),
     },
     cheaperPeriodTime: {
-      fontSize: 15,
-      fontWeight: '600' as const,
+      fontSize: scaleFontSize(15),
+      fontWeight: fontWeightNormal,
     },
     cheaperPeriodPrice: {
-      fontSize: 15,
-      fontWeight: '700' as const,
+      fontSize: scaleFontSize(15),
+      fontWeight: fontWeightBold,
     },
     placeholderContainer: {
       alignItems: 'center',
       justifyContent: 'center',
-      padding: 40,
+      padding: scaleSpacing(40),
     },
     placeholderTitle: {
-      fontSize: 16,
+      fontSize: scaleFontSize(16),
       color: colors.text.secondary,
       textAlign: 'center' as const,
     },

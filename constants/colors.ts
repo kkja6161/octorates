@@ -2,6 +2,86 @@ const octopusBlue = "#1E88E5";
 const octopusCyan = "#00D4D8";
 const octopusOrange = "#FF9800";
 
+export const HIGH_CONTRAST_LIGHT = {
+  primary: "#0D47A1",
+  secondary: "#00838F",
+  accent: "#E65100",
+  
+  background: "#FFFFFF",
+  surface: "#FFFFFF",
+  surfaceElevated: "#F5F5F5",
+  
+  text: {
+    primary: "#000000",
+    secondary: "#212121",
+    tertiary: "#424242",
+  },
+  
+  chart: {
+    veryLow: "#1B5E20",
+    low: "#00695C",
+    medium: "#E65100",
+    high: "#B71C1C",
+    veryHigh: "#880E4F",
+    extreme: "#4A148C",
+  },
+  
+  border: "#000000",
+  borderLight: "#424242",
+  
+  overlay: "rgba(0, 0, 0, 0.7)",
+  
+  success: "#1B5E20",
+  error: "#B71C1C",
+  warning: "#E65100",
+  
+  gasColor: "#E65100",
+  gasBackground: "#FFF3E0",
+  
+  chartGrid: "#424242",
+  chartAxisLabel: "#000000",
+};
+
+export const HIGH_CONTRAST_DARK = {
+  primary: "#64B5F6",
+  secondary: "#4DD0E1",
+  accent: "#FFB74D",
+  
+  background: "#000000",
+  surface: "#121212",
+  surfaceElevated: "#1E1E1E",
+  
+  text: {
+    primary: "#FFFFFF",
+    secondary: "#E0E0E0",
+    tertiary: "#BDBDBD",
+  },
+  
+  chart: {
+    veryLow: "#81C784",
+    low: "#4DD0E1",
+    medium: "#FFB74D",
+    high: "#EF5350",
+    veryHigh: "#F48FB1",
+    extreme: "#CE93D8",
+  },
+  
+  border: "#FFFFFF",
+  borderLight: "#BDBDBD",
+  
+  overlay: "rgba(0, 0, 0, 0.85)",
+  
+  success: "#81C784",
+  error: "#EF5350",
+  warning: "#FFB74D",
+  
+  gasColor: "#FFB74D",
+  gasBackground: "#2E2410",
+  
+  chartGrid: "#424242",
+  chartAxisLabel: "#FFFFFF",
+};
+
 export const CHART_COLORS_LIGHT = {
   veryLow: "#4CAF50",
   low: "#00D4D8",
@@ -86,7 +166,10 @@ export const DARK_THEME = {
   chartAxisLabel: "#9CA3AF",
 };
 
-export function useColors(isDark: boolean) {
+export function useColors(isDark: boolean, isHighContrast: boolean = false) {
+  if (isHighContrast) {
+    return isDark ? HIGH_CONTRAST_DARK : HIGH_CONTRAST_LIGHT;
+  }
   return isDark ? DARK_THEME : LIGHT_THEME;
 }
 

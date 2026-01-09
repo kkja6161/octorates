@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Zap, Flame, ChevronRight, Palette, GitCompare, Bell, User, CheckCircle, Calculator, Trash2, FileText } from 'lucide-react-native';
+import { Zap, Flame, ChevronRight, Palette, GitCompare, Bell, User, CheckCircle, Calculator, Trash2, FileText, Accessibility } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Linking from 'expo-linking';
 
@@ -19,7 +19,8 @@ import { useConsumption, ELECTRICITY_COMPARISON_TARIFFS, GAS_COMPARISON_TARIFFS 
 import { useEnergyRates } from '@/providers/EnergyRatesProvider';
 import { useNotificationSettings } from '@/providers/NotificationSettingsProvider';
 import { requestNotificationPermissions, getNotificationPermissionStatus, cancelAllNotifications, clearNotificationCache } from '@/services/notificationService';
-import { useColors } from '@/constants/colors';
+import { useAccessibleColors } from '@/hooks/useAccessibleStyles';
+import { useAccessibility } from '@/providers/AccessibilityProvider';
 import { useTheme } from '@/providers/ThemeProvider';
 import { GSP_REGIONS } from '@/types/energy';
 import { getTariffDisplayName } from '@/utils/tariffNames';
@@ -51,7 +52,8 @@ export default function SettingsScreen() {
   const [isClearingCache, setIsClearingCache] = useState(false);
   
   const { isDark } = useTheme();
-  const colors = useColors(isDark);
+  const { isHighContrast, scaleFontSize, scaleSpacing, isBoldText } = useAccessibility();
+  const colors = useAccessibleColors();
   const insets = useSafeAreaInsets();
   
   useEffect(() => {
@@ -133,44 +135,52 @@ export default function SettingsScreen() {
     return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
   };
 
+  const cardBorderWidth = isHighContrast ? 2 : 0;
+  const baseSpacing = scaleSpacing(16);
+  const fontWeightNormal = isBoldText ? '600' as const : '500' as const;
+  const fontWeightBold = isBoldText ? '800' as const : '700' as const;
+
   const styles = StyleSheet.create({
     container: {
       flex: 1,
       backgroundColor: colors.background,
     },
     header: {
-      paddingHorizontal: 20,
-      paddingBottom: 16,
+      paddingHorizontal: scaleSpacing(20),
+      paddingBottom: baseSpacing,
     },
     headerTitle: {
-      fontSize: 24,
-      fontWeight: '700' as const,
+      fontSize: scaleFontSize(24),
+      fontWeight: fontWeightBold,
       color: colors.surface,
     },
     scrollView: {
       flex: 1,
     },
     scrollContent: {
-      padding: 20,
-      gap: 24,
+      padding: scaleSpacing(20),
+      gap: scaleSpacing(24),
     },
     section: {
-      gap: 12,
+      gap: scaleSpacing(12),
     },
     sectionTitle: {
-      fontSize: 14,
-      fontWeight: '600' as const,
+      fontSize: scaleFontSize(14),
+      fontWeight: fontWeightNormal,
       color: colors.text.secondary,
       textTransform: 'uppercase' as const,
-      letterSpacing: 0.5,
+      letterSpacing: isHighContrast ? 1 : 0.5,
     },
     settingItem: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
       backgroundColor: colors.surface,
-      padding: 16,
+      padding: baseSpacing,
       borderRadius: 12,
+      minHeight: 44,
+      borderWidth: cardBorderWidth,
+      borderColor: colors.border,
     },
     settingItemDisabled: {
       opacity: 0.5,
@@ -178,13 +188,13 @@ export default function SettingsScreen() {
     settingLeft: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 12,
+      gap: scaleSpacing(12),
       flex: 1,
     },
     iconContainer: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
+      width: scaleSpacing(40),
+      height: scaleSpacing(40),
+      borderRadius: scaleSpacing(20),
       alignItems: 'center',
       justifyContent: 'center',
     },
@@ -193,20 +203,22 @@ export default function SettingsScreen() {
       gap: 2,
     },
     settingLabel: {
-      fontSize: 14,
+      fontSize: scaleFontSize(14),
       color: colors.text.secondary,
-      fontWeight: '500' as const,
+      fontWeight: fontWeightNormal,
     },
     settingValue: {
-      fontSize: 16,
+      fontSize: scaleFontSize(16),
       color: colors.text.primary,
-      fontWeight: '600' as const,
+      fontWeight: fontWeightNormal,
     },
     accountInfoCard: {
       backgroundColor: colors.surface,
       borderRadius: 12,
-      padding: 16,
-      gap: 12,
+      padding: baseSpacing,
+      gap: scaleSpacing(12),
+      borderWidth: cardBorderWidth,
+      borderColor: colors.border,
     },
     accountInfoRow: {
       flexDirection: 'row',
@@ -214,70 +226,77 @@ export default function SettingsScreen() {
       alignItems: 'center',
     },
     accountInfoLabel: {
-      fontSize: 14,
+      fontSize: scaleFontSize(14),
       color: colors.text.secondary,
     },
     accountInfoValue: {
-      fontSize: 14,
-      fontWeight: '600' as const,
+      fontSize: scaleFontSize(14),
+      fontWeight: fontWeightNormal,
       color: colors.text.primary,
     },
     comparisonHelpText: {
-      fontSize: 13,
+      fontSize: scaleFontSize(13),
       color: colors.text.secondary,
-      lineHeight: 18,
+      lineHeight: scaleFontSize(18),
       paddingHorizontal: 4,
       marginTop: 4,
     },
     notificationStatusContainer: {
-      gap: 12,
+      gap: scaleSpacing(12),
       marginTop: 4,
     },
     permissionStatus: {
-      backgroundColor: '#d1fae5',
+      backgroundColor: isHighContrast ? '#a7f3d0' : '#d1fae5',
       borderRadius: 12,
-      padding: 12,
+      padding: scaleSpacing(12),
+      borderWidth: cardBorderWidth,
+      borderColor: '#065f46',
     },
     permissionDeniedStatus: {
-      backgroundColor: '#fee2e2',
+      backgroundColor: isHighContrast ? '#fecaca' : '#fee2e2',
+      borderColor: '#991b1b',
     },
     permissionGrantedText: {
-      fontSize: 14,
-      fontWeight: '600' as const,
+      fontSize: scaleFontSize(14),
+      fontWeight: fontWeightNormal,
       color: '#065f46',
     },
     permissionDeniedText: {
-      fontSize: 14,
-      fontWeight: '600' as const,
+      fontSize: scaleFontSize(14),
+      fontWeight: fontWeightNormal,
       color: '#991b1b',
-      marginBottom: 8,
+      marginBottom: scaleSpacing(8),
     },
     openSettingsButton: {
       backgroundColor: '#dc2626',
-      padding: 10,
+      padding: scaleSpacing(10),
       borderRadius: 8,
       alignItems: 'center',
+      minHeight: 44,
+      justifyContent: 'center',
     },
     openSettingsButtonText: {
-      fontSize: 14,
-      fontWeight: '600' as const,
+      fontSize: scaleFontSize(14),
+      fontWeight: fontWeightNormal,
       color: colors.surface,
     },
     versionCard: {
       backgroundColor: colors.surface,
       borderRadius: 12,
-      padding: 16,
+      padding: baseSpacing,
       alignItems: 'center',
       gap: 4,
+      borderWidth: cardBorderWidth,
+      borderColor: colors.border,
     },
     versionLabel: {
-      fontSize: 12,
+      fontSize: scaleFontSize(12),
       color: colors.text.secondary,
-      fontWeight: '500' as const,
+      fontWeight: fontWeightNormal,
     },
     versionValue: {
-      fontSize: 18,
-      fontWeight: '700' as const,
+      fontSize: scaleFontSize(18),
+      fontWeight: fontWeightBold,
       color: colors.text.primary,
     },
   });
@@ -514,6 +533,24 @@ export default function SettingsScreen() {
               </View>
               <ChevronRight size={20} color={colors.text.secondary} />
             </Pressable>
+            
+            <Pressable 
+              onPress={() => router.push('/settings/accessibility')}
+              style={styles.settingItem}
+            >
+              <View style={styles.settingLeft}>
+                <View style={[styles.iconContainer, { backgroundColor: '#e0e7ff' }]}>
+                  <Accessibility size={20} color="#6366f1" />
+                </View>
+                <View style={styles.settingTextContainer}>
+                  <Text style={styles.settingLabel}>Accessibility</Text>
+                  <Text style={styles.settingValue}>
+                    {isHighContrast ? 'High Contrast' : 'Standard'}
+                  </Text>
+                </View>
+              </View>
+              <ChevronRight size={20} color={colors.text.secondary} />
+            </Pressable>
           </View>
 
           <View style={styles.section}>
@@ -605,7 +642,7 @@ export default function SettingsScreen() {
 
             <View style={styles.versionCard}>
               <Text style={styles.versionLabel}>Version</Text>
-              <Text style={styles.versionValue}>1.0.6</Text>
+              <Text style={styles.versionValue}>1.0.53</Text>
             </View>
           </View>
 

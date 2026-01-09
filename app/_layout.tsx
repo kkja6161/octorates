@@ -10,6 +10,7 @@ import { ConsumptionProvider, useConsumption } from "@/providers/ConsumptionProv
 import { NotificationSettingsProvider } from "@/providers/NotificationSettingsProvider";
 import { TutorialProvider } from "@/providers/TutorialProvider";
 import { ThemeContext } from "@/providers/ThemeProvider";
+import { AccessibilityContext } from "@/providers/AccessibilityProvider";
 import { EVProvider } from "@/providers/EVProvider";
 import TutorialOverlay from "@/components/TutorialOverlay";
 import Colors from "@/constants/colors";
@@ -93,19 +94,21 @@ export default function RootLayout() {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeContext>
-        <EnergyRatesProvider>
-          <GestureHandlerRootView style={{ flex: 1 }}>
-            <ConsumptionProvider>
-              <EVProvider>
-                <NotificationSettingsProvider>
-                  <TutorialProvider>
-                    <AppContent />
-                  </TutorialProvider>
-                </NotificationSettingsProvider>
-              </EVProvider>
-            </ConsumptionProvider>
-          </GestureHandlerRootView>
-        </EnergyRatesProvider>
+        <AccessibilityContext>
+          <EnergyRatesProvider>
+            <GestureHandlerRootView style={{ flex: 1 }}>
+              <ConsumptionProvider>
+                <EVProvider>
+                  <NotificationSettingsProvider>
+                    <TutorialProvider>
+                      <AppContent />
+                    </TutorialProvider>
+                  </NotificationSettingsProvider>
+                </EVProvider>
+              </ConsumptionProvider>
+            </GestureHandlerRootView>
+          </EnergyRatesProvider>
+        </AccessibilityContext>
       </ThemeContext>
     </QueryClientProvider>
   );
