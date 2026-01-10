@@ -340,21 +340,7 @@ export function GridStatusCard({ colors, isDark }: GridStatusCardProps) {
             ))}
           </View>
 
-          {gridStatus.detailedMix && gridStatus.detailedMix.gas.total > 0 && (
-            <>
-              <Text style={styles.sectionTitle}>Gas Breakdown</Text>
-              <View style={styles.mixGrid}>
-                <View style={styles.mixItem}>
-                  <Text style={styles.mixFuel}>CCGT</Text>
-                  <Text style={styles.mixPerc}>{gridStatus.detailedMix.gas.ccgt.toFixed(1)} GW</Text>
-                </View>
-                <View style={styles.mixItem}>
-                  <Text style={styles.mixFuel}>OCGT</Text>
-                  <Text style={styles.mixPerc}>{gridStatus.detailedMix.gas.ocgt.toFixed(1)} GW</Text>
-                </View>
-              </View>
-            </>
-          )}
+
 
           {gridStatus.detailedMix && (gridStatus.detailedMix.storage.battery > 0 || gridStatus.detailedMix.storage.pumped > 0) && (
             <>
@@ -376,24 +362,7 @@ export function GridStatusCard({ colors, isDark }: GridStatusCardProps) {
             </>
           )}
 
-          {gridStatus.detailedMix && gridStatus.detailedMix.interconnectors.imports.length > 0 && (
-            <>
-              <Text style={styles.sectionTitle}>Interconnectors ({gridStatus.detailedMix.interconnectors.total.toFixed(1)} GW)</Text>
-              <View style={styles.mixGrid}>
-                {gridStatus.detailedMix.interconnectors.imports
-                  .filter(ic => Math.abs(ic.generation) > 0.01)
-                  .sort((a, b) => b.generation - a.generation)
-                  .map((ic) => (
-                    <View key={ic.fuel} style={styles.mixItem}>
-                      <Text style={styles.mixFuel}>{formatFuelName(ic.fuel)}</Text>
-                      <Text style={[styles.mixPerc, ic.generation < 0 && styles.exportValue]}>
-                        {ic.generation > 0 ? '+' : ''}{ic.generation.toFixed(2)} GW
-                      </Text>
-                    </View>
-                  ))}
-              </View>
-            </>
-          )}
+
 
           <View style={styles.summaryRow}>
             <View style={styles.summaryItem}>
