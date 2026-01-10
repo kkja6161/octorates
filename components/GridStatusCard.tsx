@@ -4,6 +4,7 @@ import { Leaf, Factory, Activity, ChevronDown, ChevronUp } from 'lucide-react-na
 import { useQuery } from '@tanstack/react-query';
 import { fetchGridStatus } from '@/services/energyApi';
 import { GridStatusData } from '@/types/energy';
+import { useAccessibility } from '@/providers/AccessibilityProvider';
 
 interface GridStatusCardProps {
   colors: {
@@ -31,6 +32,7 @@ const INTENSITY_COLORS: Record<string, { bg: string; text: string }> = {
 export function GridStatusCard({ colors, isDark }: GridStatusCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [rotateAnim] = useState(new Animated.Value(0));
+  const { isLargeText } = useAccessibility();
 
   const { data: gridStatus, isLoading } = useQuery<GridStatusData | null>({
     queryKey: ['gridStatus'],
@@ -216,10 +218,12 @@ export function GridStatusCard({ colors, isDark }: GridStatusCardProps) {
               <Leaf size={14} color="#10B981" />
               <Text style={styles.statValue}>{gridStatus.renewablePercentage}%</Text>
             </View>
-            <View style={styles.statItem}>
-              <Factory size={14} color="#6B7280" />
-              <Text style={styles.statValue}>{gridStatus.nonRenewablePercentage}%</Text>
-            </View>
+            {!isLargeText && (
+              <View style={styles.statItem}>
+                <Factory size={14} color="#6B7280" />
+                <Text style={styles.statValue}>{gridStatus.nonRenewablePercentage}%</Text>
+              </View>
+            )}
           </View>
         </View>
         <View style={styles.co2Badge}>
