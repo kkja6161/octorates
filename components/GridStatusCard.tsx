@@ -70,13 +70,76 @@ export function GridStatusCard({ colors, isDark }: GridStatusCardProps) {
       'hydro': 'Hydro',
       'hydroelectric': 'Hydro',
       'pumped storage': 'Pumped Storage',
+      'pumped': 'Pumped Storage',
       'solar': 'Solar',
       'wind': 'Wind',
+      'ccgt': 'Gas (CCGT)',
+      'ocgt': 'Gas (OCGT)',
+      'battery': 'Battery',
+      'oil': 'Oil',
+      'ifa': 'Imports',
+      'moyle': 'Ireland (Moyle)',
+      'britned': 'Netherlands',
+      'ewic': 'Ireland (EWIC)',
+      'nemo': 'Belgium',
+      'ifa2': 'France (IFA2)',
+      'nsl': 'Norway',
+      'eleclink': 'France (Eleclink)',
+      'viking': 'Denmark',
+      'greenlink': 'Ireland (Greenlink)',
     };
     return names[fuel.toLowerCase()] || fuel;
   };
 
-  const sortedMix = [...gridStatus.generationMix].sort((a, b) => b.perc - a.perc);
+  const getDetailedMixForDisplay = () => {
+    if (!gridStatus.detailedMix) {
+      return gridStatus.generationMix.map(item => ({
+        fuel: item.fuel,
+        perc: item.perc,
+        generation: 0,
+      })).sort((a, b) => b.perc - a.perc);
+    }
+
+    const detailed = gridStatus.detailedMix;
+    const displayItems: { fuel: string; perc: number; generation: number }[] = [];
+
+    detailed.entries.forEach(entry => {
+      if (entry.fuel === 'ccgt' || entry.fuel === 'ocgt') {
+        const existingGas = displayItems.find(d => d.fuel === 'gas');
+        if (existingGas) {
+          existingGas.generation += entry.generation;
+          existingGas.perc += entry.perc;
+        } else {
+          displayItems.push({
+            fuel: 'gas',
+            perc: entry.perc,
+            generation: entry.generation,
+          });
+        }
+      } else if (!['ifa', 'moyle', 'britned', 'ewic', 'nemo', 'ifa2', 'nsl', 'eleclink', 'viking', 'greenlink'].includes(entry.fuel)) {
+        displayItems.push({
+          fuel: entry.fuel,
+          perc: entry.perc,
+          generation: entry.generation,
+        });
+      }
+    });
+
+    if (detailed.interconnectors.total > 0) {
+      const importPerc = detailed.total > 0 
+        ? Math.round((detailed.interconnectors.total / detailed.total) * 1000) / 10 
+        : 0;
+      displayItems.push({
+        fuel: 'imports',
+        perc: importPerc,
+        generation: detailed.interconnectors.total,
+      });
+    }
+
+    return displayItems.filter(item => item.perc > 0.1).sort((a, b) => b.perc - a.perc);
+  };
+
+  const sortedMix = getDetailedMixForDisplay();
 
   const styles = StyleSheet.create({
     container: {
@@ -143,14 +206,26 @@ export function GridStatusCard({ colors, isDark }: GridStatusCardProps) {
       borderTopWidth: 1,
       borderTopColor: colors.border,
     },
+    sectionHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginTop: 10,
+      marginBottom: 8,
+    },
     sectionTitle: {
       fontSize: 13,
       fontWeight: '600' as const,
       color: colors.text.secondary,
-      marginTop: 10,
-      marginBottom: 8,
       textTransform: 'uppercase' as const,
       letterSpacing: 0.5,
+      marginTop: 10,
+      marginBottom: 8,
+    },
+    totalGeneration: {
+      fontSize: 14,
+      fontWeight: '700' as const,
+      color: colors.text.primary,
     },
     mixGrid: {
       flexDirection: 'row',
@@ -174,6 +249,13 @@ export function GridStatusCard({ colors, isDark }: GridStatusCardProps) {
       fontSize: 13,
       fontWeight: '600' as const,
       color: colors.text.primary,
+    },
+    mixGw: {
+      fontSize: 11,
+      color: colors.text.secondary,
+    },
+    exportValue: {
+      color: '#EF4444',
     },
     summaryRow: {
       flexDirection: 'row',
@@ -240,15 +322,78 @@ export function GridStatusCard({ colors, isDark }: GridStatusCardProps) {
 
       {expanded && (
         <View style={styles.expandedContent}>
-          <Text style={styles.sectionTitle}>Generation Mix</Text>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Generation Mix</Text>
+            {gridStatus.detailedMix && (
+              <Text style={styles.totalGeneration}>{gridStatus.detailedMix.total.toFixed(1)} GW</Text>
+            )}
+          </View>
           <View style={styles.mixGrid}>
             {sortedMix.map((item) => (
               <View key={item.fuel} style={styles.mixItem}>
                 <Text style={styles.mixFuel}>{formatFuelName(item.fuel)}</Text>
                 <Text style={styles.mixPerc}>{item.perc.toFixed(1)}%</Text>
+                {gridStatus.detailedMix && item.generation > 0 && (
+                  <Text style={styles.mixGw}>{item.generation.toFixed(1)}GW</Text>
+                )}
               </View>
             ))}
           </View>
+
+          {gridStatus.detailedMix && gridStatus.detailedMix.gas.total > 0 && (
+            <>
+              <Text style={styles.sectionTitle}>Gas Breakdown</Text>
+              <View style={styles.mixGrid}>
+                <View style={styles.mixItem}>
+                  <Text style={styles.mixFuel}>CCGT</Text>
+                  <Text style={styles.mixPerc}>{gridStatus.detailedMix.gas.ccgt.toFixed(1)} GW</Text>
+                </View>
+                <View style={styles.mixItem}>
+                  <Text style={styles.mixFuel}>OCGT</Text>
+                  <Text style={styles.mixPerc}>{gridStatus.detailedMix.gas.ocgt.toFixed(1)} GW</Text>
+                </View>
+              </View>
+            </>
+          )}
+
+          {gridStatus.detailedMix && (gridStatus.detailedMix.storage.battery > 0 || gridStatus.detailedMix.storage.pumped > 0) && (
+            <>
+              <Text style={styles.sectionTitle}>Storage</Text>
+              <View style={styles.mixGrid}>
+                {gridStatus.detailedMix.storage.battery > 0 && (
+                  <View style={styles.mixItem}>
+                    <Text style={styles.mixFuel}>Battery</Text>
+                    <Text style={styles.mixPerc}>{gridStatus.detailedMix.storage.battery.toFixed(2)} GW</Text>
+                  </View>
+                )}
+                {gridStatus.detailedMix.storage.pumped > 0 && (
+                  <View style={styles.mixItem}>
+                    <Text style={styles.mixFuel}>Pumped</Text>
+                    <Text style={styles.mixPerc}>{gridStatus.detailedMix.storage.pumped.toFixed(2)} GW</Text>
+                  </View>
+                )}
+              </View>
+            </>
+          )}
+
+          {gridStatus.detailedMix && gridStatus.detailedMix.interconnectors.imports.length > 0 && (
+            <>
+              <Text style={styles.sectionTitle}>Interconnectors ({gridStatus.detailedMix.interconnectors.total.toFixed(1)} GW)</Text>
+              <View style={styles.mixGrid}>
+                {gridStatus.detailedMix.interconnectors.imports
+                  .filter(ic => Math.abs(ic.generation) > 0.01)
+                  .sort((a, b) => b.generation - a.generation)
+                  .map((ic) => (
+                    <View key={ic.fuel} style={styles.mixItem}>
+                      <Text style={styles.mixFuel}>{formatFuelName(ic.fuel)}</Text>
+                      <Text style={[styles.mixPerc, ic.generation < 0 && styles.exportValue]}>
+                        {ic.generation > 0 ? '+' : ''}{ic.generation.toFixed(2)} GW
+                      </Text>
+                    </View>
+                  ))}
+              </View>
+            </>
+          )}
 
           <View style={styles.summaryRow}>
             <View style={styles.summaryItem}>

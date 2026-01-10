@@ -1,4 +1,4 @@
-import { EnergyRatesResponse, ProcessedRate, ProductsResponse, TariffInfo, ConsumptionResponse, StandingChargesResponse, AccountResponse, ProcessedAccountData, ProcessedTariffAgreement, CarbonIntensityResponse, GenerationMixResponse, GridStatusData, AgilePredictForecast, ProcessedForecastRate } from '@/types/energy';
+import { EnergyRatesResponse, ProcessedRate, ProductsResponse, TariffInfo, ConsumptionResponse, StandingChargesResponse, AccountResponse, ProcessedAccountData, ProcessedTariffAgreement, CarbonIntensityResponse, GenerationMixResponse, GridStatusData, AgilePredictForecast, ProcessedForecastRate, ElexonFuelInstItem, ElexonGenerationData, ElexonGenerationEntry, ElexonFuelType } from '@/types/energy';
 import { DEFAULT_GSP_REGION, buildProductListUrl, buildFlexibleTariffUrl, buildGasTrackerTariffUrl, OCTOPUS_API_BASE, PRODUCT_CODE_MAPPING } from '@/constants/octopus';
 
 function normalizeProductCode(productCode: string): string {
@@ -804,16 +804,181 @@ export async function fetchConsumption(
 }
 
 const CARBON_INTENSITY_API = 'https://api.carbonintensity.org.uk';
+const ELEXON_API = 'https://data.elexon.co.uk/bmrs/api/v1';
 
 const RENEWABLE_FUELS = ['wind', 'solar', 'hydro', 'biomass', 'hydroelectric', 'pumped storage'];
+
+const ELEXON_FUEL_MAP: Record<string, ElexonFuelType> = {
+  'COAL': 'coal',
+  'CCGT': 'ccgt',
+  'OCGT': 'ocgt',
+  'NUCLEAR': 'nuclear',
+  'OIL': 'oil',
+  'WIND': 'wind',
+  'NPSHYD': 'hydro',
+  'PS': 'pumped',
+  'BIOMASS': 'biomass',
+  'BESS': 'battery',
+  'OTHER': 'other',
+  'INTFR': 'ifa',
+  'INTIRL': 'moyle',
+  'INTNED': 'britned',
+  'INTEW': 'ewic',
+  'INTNEM': 'nemo',
+  'INTIFA2': 'ifa2',
+  'INTNSL': 'nsl',
+  'INTELEC': 'eleclink',
+  'INTVKL': 'viking',
+  'INTGRNL': 'greenlink',
+};
+
+const INTERCONNECTOR_FUELS = ['ifa', 'moyle', 'britned', 'ewic', 'nemo', 'ifa2', 'nsl', 'eleclink', 'viking', 'greenlink'];
+const ELEXON_RENEWABLE_FUELS = ['wind', 'solar', 'hydro', 'biomass'];
+
+async function fetchElexonGeneration(): Promise<ElexonGenerationData | null> {
+  console.log('[Energy API] ========== FETCH ELEXON GENERATION ==========');
+  
+  try {
+    const now = new Date();
+    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+    
+    const url = `${ELEXON_API}/datasets/FUELINST/stream?publishDateTimeFrom=${oneHourAgo.toISOString()}&publishDateTimeTo=${now.toISOString()}`;
+    console.log('[Energy API] Elexon URL:', url);
+    
+    const response = await fetch(url);
+    
+    if (!response.ok) {
+      console.error('[Energy API] Elexon API error:', response.status);
+      return null;
+    }
+    
+    const rawData: ElexonFuelInstItem[] = await response.json();
+    
+    if (!Array.isArray(rawData) || rawData.length === 0) {
+      console.error('[Energy API] Invalid Elexon response');
+      return null;
+    }
+    
+    const latestByFuel: Record<string, { time: string; generation: number }> = {};
+    
+    rawData.forEach(item => {
+      const fuel = item.fuelType;
+      const existing = latestByFuel[fuel];
+      if (!existing || new Date(item.startTime) > new Date(existing.time)) {
+        latestByFuel[fuel] = {
+          time: item.startTime,
+          generation: item.generation / 1000,
+        };
+      }
+    });
+    
+    console.log('[Energy API] ========== ELEXON GENERATION VALUES ==========');
+    
+    const entries: ElexonGenerationEntry[] = [];
+    const interconnectors: ElexonGenerationEntry[] = [];
+    let totalGeneration = 0;
+    let ccgtGeneration = 0;
+    let ocgtGeneration = 0;
+    let batteryGeneration = 0;
+    let pumpedGeneration = 0;
+    let interconnectorTotal = 0;
+    
+    Object.entries(latestByFuel).forEach(([fuelType, data]) => {
+      const mappedFuel = ELEXON_FUEL_MAP[fuelType];
+      if (!mappedFuel) {
+        console.log(`[Energy API] Unknown fuel type: ${fuelType}`);
+        return;
+      }
+      
+      const generation = Math.max(0, data.generation);
+      console.log(`[Energy API] ${fuelType} -> ${mappedFuel}: ${generation.toFixed(2)} GW`);
+      
+      if (INTERCONNECTOR_FUELS.includes(mappedFuel)) {
+        interconnectorTotal += data.generation;
+        interconnectors.push({
+          fuel: mappedFuel,
+          generation: data.generation,
+          perc: 0,
+        });
+      } else {
+        totalGeneration += generation;
+        
+        if (mappedFuel === 'ccgt') ccgtGeneration = generation;
+        if (mappedFuel === 'ocgt') ocgtGeneration = generation;
+        if (mappedFuel === 'battery') batteryGeneration = generation;
+        if (mappedFuel === 'pumped') pumpedGeneration = generation;
+        
+        entries.push({
+          fuel: mappedFuel,
+          generation,
+          perc: 0,
+        });
+      }
+    });
+    
+    if (interconnectorTotal > 0) {
+      totalGeneration += interconnectorTotal;
+    }
+    
+    entries.forEach(entry => {
+      entry.perc = totalGeneration > 0 ? Math.round((entry.generation / totalGeneration) * 1000) / 10 : 0;
+    });
+    
+    if (interconnectorTotal > 0) {
+      const interconnectorPerc = totalGeneration > 0 ? Math.round((interconnectorTotal / totalGeneration) * 1000) / 10 : 0;
+      entries.push({
+        fuel: 'ifa' as ElexonFuelType,
+        generation: interconnectorTotal,
+        perc: interconnectorPerc,
+      });
+    }
+    
+    interconnectors.forEach(ic => {
+      ic.perc = interconnectorTotal > 0 ? Math.round((Math.abs(ic.generation) / Math.abs(interconnectorTotal)) * 1000) / 10 : 0;
+    });
+    
+    entries.sort((a, b) => b.generation - a.generation);
+    
+    console.log('[Energy API] Total generation:', totalGeneration.toFixed(2), 'GW');
+    console.log('[Energy API] ===============================================');
+    
+    const latestTime = Object.values(latestByFuel).reduce((latest, item) => {
+      const itemTime = new Date(item.time);
+      return itemTime > latest ? itemTime : latest;
+    }, new Date(0));
+    
+    return {
+      timestamp: latestTime,
+      total: Math.round(totalGeneration * 100) / 100,
+      entries,
+      interconnectors: {
+        total: Math.round(interconnectorTotal * 100) / 100,
+        imports: interconnectors,
+      },
+      gas: {
+        ccgt: Math.round(ccgtGeneration * 100) / 100,
+        ocgt: Math.round(ocgtGeneration * 100) / 100,
+        total: Math.round((ccgtGeneration + ocgtGeneration) * 100) / 100,
+      },
+      storage: {
+        battery: Math.round(batteryGeneration * 100) / 100,
+        pumped: Math.round(pumpedGeneration * 100) / 100,
+      },
+    };
+  } catch (error) {
+    console.error('[Energy API] Error fetching Elexon generation:', error);
+    return null;
+  }
+}
 
 export async function fetchGridStatus(): Promise<GridStatusData | null> {
   console.log('[Energy API] ========== FETCH GRID STATUS ==========');
   
   try {
-    const [intensityRes, generationRes] = await Promise.all([
+    const [intensityRes, generationRes, elexonData] = await Promise.all([
       fetch(`${CARBON_INTENSITY_API}/intensity`),
       fetch(`${CARBON_INTENSITY_API}/generation`),
+      fetchElexonGeneration(),
     ]);
     
     if (!intensityRes.ok || !generationRes.ok) {
@@ -838,18 +1003,33 @@ export async function fetchGridStatus(): Promise<GridStatusData | null> {
     });
     console.log('[Energy API] ===============================================');
     
-    const renewablePercentage = mix
-      .filter(item => RENEWABLE_FUELS.includes(item.fuel.toLowerCase()))
-      .reduce((sum, item) => sum + item.perc, 0);
+    let renewablePercentage: number;
+    let nonRenewablePercentage: number;
     
-    const nonRenewablePercentage = 100 - renewablePercentage;
+    if (elexonData) {
+      const renewableGeneration = elexonData.entries
+        .filter(e => ELEXON_RENEWABLE_FUELS.includes(e.fuel))
+        .reduce((sum, e) => sum + e.generation, 0);
+      renewablePercentage = elexonData.total > 0 
+        ? Math.round((renewableGeneration / elexonData.total) * 1000) / 10 
+        : 0;
+      nonRenewablePercentage = Math.round((100 - renewablePercentage) * 10) / 10;
+    } else {
+      renewablePercentage = mix
+        .filter(item => RENEWABLE_FUELS.includes(item.fuel.toLowerCase()))
+        .reduce((sum, item) => sum + item.perc, 0);
+      nonRenewablePercentage = 100 - renewablePercentage;
+      renewablePercentage = Math.round(renewablePercentage * 10) / 10;
+      nonRenewablePercentage = Math.round(nonRenewablePercentage * 10) / 10;
+    }
     
     const result: GridStatusData = {
       carbonIntensity: intensity.intensity.actual ?? intensity.intensity.forecast,
       intensityIndex: intensity.intensity.index,
-      renewablePercentage: Math.round(renewablePercentage * 10) / 10,
-      nonRenewablePercentage: Math.round(nonRenewablePercentage * 10) / 10,
+      renewablePercentage,
+      nonRenewablePercentage,
       generationMix: mix,
+      detailedMix: elexonData ?? undefined,
       lastUpdated: new Date(),
     };
     

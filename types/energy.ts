@@ -274,7 +274,46 @@ export interface GridStatusData {
   renewablePercentage: number;
   nonRenewablePercentage: number;
   generationMix: GenerationMixItem[];
+  detailedMix?: ElexonGenerationData;
   lastUpdated: Date;
+}
+
+// Elexon BMRS API Types
+export type ElexonFuelType = 
+  | 'coal' | 'ccgt' | 'ocgt' | 'nuclear' | 'oil' | 'wind' | 'hydro' 
+  | 'pumped' | 'biomass' | 'battery' | 'other' | 'solar'
+  | 'ifa' | 'moyle' | 'britned' | 'ewic' | 'nemo' | 'ifa2' 
+  | 'nsl' | 'eleclink' | 'viking' | 'greenlink';
+
+export interface ElexonFuelInstItem {
+  startTime: string;
+  fuelType: string;
+  generation: number;
+}
+
+export interface ElexonGenerationEntry {
+  fuel: ElexonFuelType;
+  generation: number; // in GW
+  perc: number;
+}
+
+export interface ElexonGenerationData {
+  timestamp: Date;
+  total: number; // Total generation in GW
+  entries: ElexonGenerationEntry[];
+  interconnectors: {
+    total: number;
+    imports: ElexonGenerationEntry[];
+  };
+  gas: {
+    ccgt: number;
+    ocgt: number;
+    total: number;
+  };
+  storage: {
+    battery: number;
+    pumped: number;
+  };
 }
 
 // Agile Predict API Types
