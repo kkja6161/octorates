@@ -1018,6 +1018,8 @@ export const [ConsumptionProvider, useConsumption] = createContextHook(() => {
   ): DailyConsumption[] => {
     console.log(`[ConsumptionProvider] ========== PROCESSING ${fuelType.toUpperCase()} DAILY CONSUMPTION WITH HISTORICAL RATES ==========`);
     console.log(`[ConsumptionProvider] Historical periods: ${historicalPeriods.length}`);
+    console.log(`[ConsumptionProvider] Comparison rates available: ${comparisonRates ? comparisonRates.length : 0}`);
+    console.log(`[ConsumptionProvider] Use flexible rate: ${useFlexibleRate}, Flexible rate: ${flexibleRate}`);
     
     // Track standing charge per day based on which tariff was active
     const dailyMap = new Map<string, { entries: ConsumptionEntryWithRate[]; standingCharge: number | null }>();
@@ -1076,8 +1078,12 @@ export const [ConsumptionProvider, useConsumption] = createContextHook(() => {
       }
 
       let comparisonCost = 0;
+      // Only calculate comparison cost if we have valid comparison data
       if (useFlexibleRate && flexibleRate) {
         comparisonCost = totalConsumption * (flexibleRate / 100);
+        if (comparisonStandingCharge !== null) {
+          comparisonCost += comparisonStandingCharge / 100;
+        }
       } else if (comparisonRates && comparisonRates.length > 0) {
         entries.forEach(entry => {
           const intervalStart = new Date(entry.interval_start);
@@ -1087,10 +1093,13 @@ export const [ConsumptionProvider, useConsumption] = createContextHook(() => {
             comparisonCost += roundedConsumption * (matchedComparisonRate.price / 100);
           }
         });
-      }
-      
-      if (comparisonStandingCharge !== null) {
-        comparisonCost += comparisonStandingCharge / 100;
+        if (comparisonStandingCharge !== null) {
+          comparisonCost += comparisonStandingCharge / 100;
+        }
+      } else {
+        // No comparison data available - set comparison cost equal to actual cost (no difference)
+        comparisonCost = cost;
+        console.log(`[ConsumptionProvider] No comparison rates available for ${date}, setting comparison cost equal to actual cost`);
       }
       
       const difference = comparisonCost - cost;
@@ -1130,12 +1139,15 @@ export const [ConsumptionProvider, useConsumption] = createContextHook(() => {
       
       const useFlexible = isFlexibleElectricityComparison;
       if (useFlexible && !flexibleElectricityRate) return [];
-      if (!useFlexible && (!comparisonElectricityRatesQuery.data || comparisonElectricityRatesQuery.data.length === 0)) return [];
+      
+      // If comparison rates aren't available (new tariff or API error), still process with empty comparison
+      // This prevents the entire usage view from being blank
+      const comparisonRates = (!useFlexible && comparisonElectricityRatesQuery.data) ? comparisonElectricityRatesQuery.data : null;
       
       return processDailyConsumptionWithHistoricalRates(
         electricityConsumptionQuery.data.results,
         singlePeriod,
-        useFlexible ? null : comparisonElectricityRatesQuery.data ?? null,
+        useFlexible ? null : comparisonRates,
         flexibleElectricityRate,
         'electricity',
         useFlexible,
@@ -1145,12 +1157,14 @@ export const [ConsumptionProvider, useConsumption] = createContextHook(() => {
     
     const useFlexible = isFlexibleElectricityComparison;
     if (useFlexible && !flexibleElectricityRate) return [];
-    if (!useFlexible && (!comparisonElectricityRatesQuery.data || comparisonElectricityRatesQuery.data.length === 0)) return [];
+    
+    // If comparison rates aren't available (new tariff or API error), still process with empty comparison
+    const comparisonRates = (!useFlexible && comparisonElectricityRatesQuery.data) ? comparisonElectricityRatesQuery.data : null;
     
     return processDailyConsumptionWithHistoricalRates(
       electricityConsumptionQuery.data.results,
       historicalPeriods,
-      useFlexible ? null : comparisonElectricityRatesQuery.data ?? null,
+      useFlexible ? null : comparisonRates,
       flexibleElectricityRate,
       'electricity',
       useFlexible,
@@ -1176,12 +1190,14 @@ export const [ConsumptionProvider, useConsumption] = createContextHook(() => {
       
       const useFlexibleForGas = isFlexibleGasComparison;
       if (useFlexibleForGas && !flexibleGasRate) return [];
-      if (!useFlexibleForGas && (!comparisonGasRatesQuery.data || comparisonGasRatesQuery.data.length === 0)) return [];
+      
+      // If comparison rates aren't available (new tariff or API error), still process with empty comparison
+      const comparisonRates = (!useFlexibleForGas && comparisonGasRatesQuery.data) ? comparisonGasRatesQuery.data : null;
       
       return processDailyConsumptionWithHistoricalRates(
         gasConsumptionQuery.data.results,
         singlePeriod,
-        useFlexibleForGas ? null : comparisonGasRatesQuery.data ?? null,
+        useFlexibleForGas ? null : comparisonRates,
         flexibleGasRate,
         'gas',
         useFlexibleForGas,
@@ -1191,12 +1207,14 @@ export const [ConsumptionProvider, useConsumption] = createContextHook(() => {
     
     const useFlexibleForGas = isFlexibleGasComparison;
     if (useFlexibleForGas && !flexibleGasRate) return [];
-    if (!useFlexibleForGas && (!comparisonGasRatesQuery.data || comparisonGasRatesQuery.data.length === 0)) return [];
+    
+    // If comparison rates aren't available (new tariff or API error), still process with empty comparison
+    const comparisonRates = (!useFlexibleForGas && comparisonGasRatesQuery.data) ? comparisonGasRatesQuery.data : null;
     
     return processDailyConsumptionWithHistoricalRates(
       gasConsumptionQuery.data.results,
       historicalPeriods,
-      useFlexibleForGas ? null : comparisonGasRatesQuery.data ?? null,
+      useFlexibleForGas ? null : comparisonRates,
       flexibleGasRate,
       'gas',
       useFlexibleForGas,

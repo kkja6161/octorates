@@ -64,9 +64,14 @@ export function useComparisonRate() {
       if (rates.length > 0) {
         const now = new Date();
         const currentRate = rates.find(r => r.validFrom <= now && r.validTo > now);
-        const rate = currentRate?.price ?? rates[rates.length - 1].price;
-        console.log('[useComparisonRate] Electricity comparison rate:', rate);
-        return rate;
+        if (currentRate) {
+          console.log('[useComparisonRate] Current electricity comparison rate:', currentRate.price);
+          return currentRate.price;
+        }
+        // Fallback to most recent rate if no current rate found
+        const mostRecent = rates[rates.length - 1];
+        console.log('[useComparisonRate] Using most recent electricity comparison rate:', mostRecent.price);
+        return mostRecent.price;
       }
       return null;
     },
@@ -92,9 +97,14 @@ export function useComparisonRate() {
         if (rates.length > 0) {
           const now = new Date();
           const currentRate = rates.find(r => r.validFrom <= now && r.validTo > now);
-          const rate = currentRate?.price ?? rates[rates.length - 1].price;
-          console.log('[useComparisonRate] Gas comparison rate:', rate);
-          return rate;
+          if (currentRate) {
+            console.log('[useComparisonRate] Current gas comparison rate:', currentRate.price);
+            return currentRate.price;
+          }
+          // Fallback to most recent rate if no current rate found
+          const mostRecent = rates[rates.length - 1];
+          console.log('[useComparisonRate] Using most recent gas comparison rate:', mostRecent.price);
+          return mostRecent.price;
         }
       } catch {
         console.log('[useComparisonRate] Gas tariff not found, falling back to Flexible');
