@@ -1109,3 +1109,46 @@ export async function fetchAgilePrediction(
     return [];
   }
 }
+
+export interface ProductDetails {
+  code: string;
+  displayName: string;
+  description: string;
+  availableFrom: Date | null;
+  availableTo: Date | null;
+  isVariable: boolean;
+  isTracker: boolean;
+}
+
+export async function fetchProductDetails(productCode: string): Promise<ProductDetails | null> {
+  console.log(`[Energy API] ========== FETCH PRODUCT DETAILS ==========`);
+  console.log(`[Energy API] Product code: ${productCode}`);
+  
+  try {
+    const normalizedCode = normalizeProductCode(productCode);
+    const url = `${OCTOPUS_API_BASE}/v1/products/${normalizedCode}/`;
+    console.log(`[Energy API] Product URL: ${url}`);
+    
+    const response = await fetch(url);
+    
+    if (!response.ok) {
+      console.log(`[Energy API] Product not found: ${response.status}`);
+      return null;
+    }
+    
+    const data = await response.json();
+    
+    return {
+      code: data.code,
+      displayName: data.display_name || data.full_name || productCode,
+      description: data.description || '',
+      availableFrom: data.available_from ? new Date(data.available_from) : null,
+      availableTo: data.available_to ? new Date(data.available_to) : null,
+      isVariable: data.is_variable || false,
+      isTracker: data.is_tracker || false,
+    };
+  } catch (error) {
+    console.log(`[Energy API] Error fetching product details:`, error);
+    return null;
+  }
+}
