@@ -1,10 +1,23 @@
 import * as Notifications from 'expo-notifications';
-import { ProcessedRate } from '@/types/energy';
+import { ProcessedRate, ProcessedForecastRate } from '@/types/energy';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const STORAGE_KEY_LAST_AGILE_CHECK = '@notifications:last_agile_check';
 const STORAGE_KEY_SCHEDULED_NOTIFICATIONS = '@notifications:scheduled_ids';
+const STORAGE_KEY_PRICE_ALERT_SCHEDULED = '@notifications:price_alerts_scheduled';
+
+export interface PriceAlertSettings {
+  enabled: boolean;
+  targetPrice: number;
+  advanceMinutes: number;
+}
+
+export const DEFAULT_PRICE_ALERT_SETTINGS: PriceAlertSettings = {
+  enabled: false,
+  targetPrice: 5,
+  advanceMinutes: 15,
+};
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -208,4 +221,131 @@ export function addNotificationResponseReceivedListener(
   callback: (response: Notifications.NotificationResponse) => void
 ): Notifications.EventSubscription {
   return Notifications.addNotificationResponseReceivedListener(callback);
+}
+
+export async function schedulePriceAlertNotifications(
+  predictions: ProcessedForecastRate[],
+  settings: PriceAlertSettings
+): Promise<string[]> {
+  if (Platform.OS === 'web') {
+    console.log('[Notifications] Price alerts not supported on web');
+    return [];
+  }
+
+  if (!settings.enabled || settings.targetPrice <= 0) {
+    console.log('[Notifications] Price alerts disabled or invalid target');
+    return [];
+  }
+
+  try {
+    const permissionStatus = await getNotificationPermissionStatus();
+    if (permissionStatus !== 'granted') {
+      console.log('[Notifications] Permission not granted for price alerts');
+      return [];
+    }
+
+    await cancelPriceAlertNotifications();
+
+    const now = new Date();
+    const scheduledIds: string[] = [];
+    const alertsToSchedule: { rate: ProcessedForecastRate; triggerTime: Date }[] = [];
+
+    predictions.forEach(rate => {
+      if (rate.price <= settings.targetPrice) {
+        const slotTime = new Date(rate.validFrom);
+        const triggerTime = new Date(slotTime.getTime() - settings.advanceMinutes * 60 * 1000);
+
+        if (triggerTime > now) {
+          alertsToSchedule.push({ rate, triggerTime });
+        }
+      }
+    });
+
+    console.log(`[Notifications] Found ${alertsToSchedule.length} price slots below ${settings.targetPrice}p`);
+
+    const maxAlerts = 10;
+    const alertsToProcess = alertsToSchedule.slice(0, maxAlerts);
+
+    for (const { rate, triggerTime } of alertsToProcess) {
+      const slotTime = new Date(rate.validFrom);
+      const timeString = slotTime.toLocaleTimeString('en-GB', { 
+        hour: '2-digit', 
+        minute: '2-digit',
+        hour12: false 
+      });
+
+      const notificationId = await Notifications.scheduleNotificationAsync({
+        content: {
+          title: `⚡ Price Alert: ${rate.price.toFixed(1)}p/kWh`,
+          body: `Energy drops to ${rate.price.toFixed(1)}p at ${timeString}. Good time to use high-power appliances!`,
+          data: {
+            type: 'price_alert',
+            price: rate.price,
+            slotTime: slotTime.toISOString(),
+          },
+          sound: 'default',
+        },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.DATE,
+          date: triggerTime,
+        },
+      });
+
+      scheduledIds.push(notificationId);
+      console.log(`[Notifications] Scheduled price alert for ${timeString} at ${rate.price.toFixed(1)}p (fires at ${triggerTime.toLocaleTimeString()})`);
+    }
+
+    await AsyncStorage.setItem(STORAGE_KEY_PRICE_ALERT_SCHEDULED, JSON.stringify({
+      ids: scheduledIds,
+      scheduledAt: new Date().toISOString(),
+      targetPrice: settings.targetPrice,
+    }));
+
+    console.log(`[Notifications] Scheduled ${scheduledIds.length} price alert notifications`);
+    return scheduledIds;
+  } catch (error) {
+    console.error('[Notifications] Failed to schedule price alerts:', error);
+    return [];
+  }
+}
+
+export async function cancelPriceAlertNotifications(): Promise<void> {
+  if (Platform.OS === 'web') {
+    return;
+  }
+
+  try {
+    const stored = await AsyncStorage.getItem(STORAGE_KEY_PRICE_ALERT_SCHEDULED);
+    if (stored) {
+      const { ids } = JSON.parse(stored);
+      for (const id of ids) {
+        await Notifications.cancelScheduledNotificationAsync(id);
+      }
+      console.log(`[Notifications] Cancelled ${ids.length} price alert notifications`);
+    }
+    await AsyncStorage.removeItem(STORAGE_KEY_PRICE_ALERT_SCHEDULED);
+  } catch (error) {
+    console.error('[Notifications] Failed to cancel price alerts:', error);
+  }
+}
+
+export async function getPriceAlertStatus(): Promise<{ scheduled: number; targetPrice: number; scheduledAt: string } | null> {
+  if (Platform.OS === 'web') {
+    return null;
+  }
+
+  try {
+    const stored = await AsyncStorage.getItem(STORAGE_KEY_PRICE_ALERT_SCHEDULED);
+    if (stored) {
+      const data = JSON.parse(stored);
+      return {
+        scheduled: data.ids?.length || 0,
+        targetPrice: data.targetPrice || 0,
+        scheduledAt: data.scheduledAt || '',
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }

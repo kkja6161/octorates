@@ -26,6 +26,7 @@ import { useTheme } from '@/providers/ThemeProvider';
 import { RateLineChart } from '@/components/RateLineChart';
 import { GridStatusCard } from '@/components/GridStatusCard';
 import { AgileForecastCard } from '@/components/AgileForecastCard';
+import { NetFluxTicker } from '@/components/NetFluxTicker';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -557,13 +558,23 @@ export default function HomeScreen() {
                 )}
 
                 {isAgile && (
-                  <AgileForecastCard
-                    region={selectedRegion}
-                    colors={colors}
-                    isDark={isDark}
-                    thresholds={electricityThresholds}
-                    tomorrowRatesAvailable={tomorrowElectricityRates.length > 0}
-                  />
+                  <>
+                    <NetFluxTicker
+                      importRate={currentElectricityRate?.price || null}
+                      exportRate={null}
+                      currentLoad={null}
+                      currentGeneration={null}
+                      colors={colors}
+                      isDark={isDark}
+                    />
+                    <AgileForecastCard
+                      region={selectedRegion}
+                      colors={colors}
+                      isDark={isDark}
+                      thresholds={electricityThresholds}
+                      tomorrowRatesAvailable={tomorrowElectricityRates.length > 0}
+                    />
+                  </>
                 )}
               </>
             ) : (

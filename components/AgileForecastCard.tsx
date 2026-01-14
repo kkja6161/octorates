@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect } from 'react';
 import { View, Text, StyleSheet, Dimensions, ActivityIndicator } from 'react-native';
 import Svg, { Path, Line, Defs, LinearGradient, Stop, Text as SvgText } from 'react-native-svg';
 import { useQuery } from '@tanstack/react-query';
@@ -7,6 +7,7 @@ import { TrendingUp } from 'lucide-react-native';
 import { fetchAgilePrediction } from '@/services/energyApi';
 import { ProcessedForecastRate, RateThresholds } from '@/types/energy';
 import { getRateThresholdLevel, getThresholdColor } from '@/utils/thresholds';
+import { useNotificationSettings } from '@/providers/NotificationSettingsProvider';
 
 interface AgileForecastCardProps {
   region: string;
@@ -23,6 +24,8 @@ export const AgileForecastCard = React.memo(function AgileForecastCard({
   thresholds,
   tomorrowRatesAvailable,
 }: AgileForecastCardProps) {
+  const { schedulePriceAlerts, priceAlertSettings } = useNotificationSettings();
+
   const { data: rawForecastRates, isLoading, error } = useQuery({
     queryKey: ['agile-prediction', region],
     queryFn: () => fetchAgilePrediction(region, 7),
@@ -77,6 +80,13 @@ export const AgileForecastCard = React.memo(function AgileForecastCard({
     
     return result;
   }, [rawForecastRates, tomorrowRatesAvailable]);
+
+  useEffect(() => {
+    if (rawForecastRates && rawForecastRates.length > 0 && priceAlertSettings?.enabled) {
+      console.log('[AgileForecastCard] Scheduling price alerts with', rawForecastRates.length, 'forecast rates');
+      schedulePriceAlerts(rawForecastRates);
+    }
+  }, [rawForecastRates, priceAlertSettings?.enabled, schedulePriceAlerts]);
 
   const chartData = useMemo(() => {
     if (!forecastRates || forecastRates.length === 0) return null;
