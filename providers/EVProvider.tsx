@@ -25,9 +25,14 @@ export const [EVProvider, useEV] = createContextHook(() => {
       console.log('[EVProvider] Loading profiles from storage...');
       const stored = await AsyncStorage.getItem(STORAGE_KEY_PROFILES);
       if (stored) {
-        const parsed = JSON.parse(stored) as EVProfile[];
-        console.log('[EVProvider] Loaded profiles:', parsed.length);
-        return parsed;
+        try {
+          const parsed = JSON.parse(stored) as EVProfile[];
+          console.log('[EVProvider] Loaded profiles:', parsed.length);
+          return parsed;
+        } catch (error) {
+          console.error('[EVProvider] Error parsing profiles:', error);
+          await AsyncStorage.removeItem(STORAGE_KEY_PROFILES);
+        }
       }
       return [];
     },
@@ -41,9 +46,14 @@ export const [EVProvider, useEV] = createContextHook(() => {
       console.log('[EVProvider] Loading charging logs from storage...');
       const stored = await AsyncStorage.getItem(STORAGE_KEY_LOGS);
       if (stored) {
-        const parsed = JSON.parse(stored) as ChargingLogEntry[];
-        console.log('[EVProvider] Loaded logs:', parsed.length);
-        return parsed;
+        try {
+          const parsed = JSON.parse(stored) as ChargingLogEntry[];
+          console.log('[EVProvider] Loaded logs:', parsed.length);
+          return parsed;
+        } catch (error) {
+          console.error('[EVProvider] Error parsing charging logs:', error);
+          await AsyncStorage.removeItem(STORAGE_KEY_LOGS);
+        }
       }
       return [];
     },

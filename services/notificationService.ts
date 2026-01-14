@@ -317,11 +317,17 @@ export async function cancelPriceAlertNotifications(): Promise<void> {
   try {
     const stored = await AsyncStorage.getItem(STORAGE_KEY_PRICE_ALERT_SCHEDULED);
     if (stored) {
-      const { ids } = JSON.parse(stored);
-      for (const id of ids) {
-        await Notifications.cancelScheduledNotificationAsync(id);
+      try {
+        const { ids } = JSON.parse(stored);
+        if (Array.isArray(ids)) {
+          for (const id of ids) {
+            await Notifications.cancelScheduledNotificationAsync(id);
+          }
+          console.log(`[Notifications] Cancelled ${ids.length} price alert notifications`);
+        }
+      } catch (parseError) {
+        console.error('[Notifications] Error parsing price alerts data:', parseError);
       }
-      console.log(`[Notifications] Cancelled ${ids.length} price alert notifications`);
     }
     await AsyncStorage.removeItem(STORAGE_KEY_PRICE_ALERT_SCHEDULED);
   } catch (error) {
@@ -337,12 +343,17 @@ export async function getPriceAlertStatus(): Promise<{ scheduled: number; target
   try {
     const stored = await AsyncStorage.getItem(STORAGE_KEY_PRICE_ALERT_SCHEDULED);
     if (stored) {
-      const data = JSON.parse(stored);
-      return {
-        scheduled: data.ids?.length || 0,
-        targetPrice: data.targetPrice || 0,
-        scheduledAt: data.scheduledAt || '',
-      };
+      try {
+        const data = JSON.parse(stored);
+        return {
+          scheduled: data.ids?.length || 0,
+          targetPrice: data.targetPrice || 0,
+          scheduledAt: data.scheduledAt || '',
+        };
+      } catch (parseError) {
+        console.error('[Notifications] Error parsing price alert status:', parseError);
+        return null;
+      }
     }
     return null;
   } catch {

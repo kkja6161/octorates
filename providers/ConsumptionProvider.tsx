@@ -146,25 +146,30 @@ export const [ConsumptionProvider, useConsumption] = createContextHook(() => {
     queryFn: async () => {
       const stored = await AsyncStorage.getItem(STORAGE_KEY_ACCOUNT_DATA);
       if (stored) {
-        const parsed = JSON.parse(stored);
-        if (parsed.movedInAt) {
-          parsed.movedInAt = new Date(parsed.movedInAt);
+        try {
+          const parsed = JSON.parse(stored);
+          if (parsed.movedInAt) {
+            parsed.movedInAt = new Date(parsed.movedInAt);
+          }
+          if (parsed.electricity?.agreements) {
+            parsed.electricity.agreements = parsed.electricity.agreements.map((a: ProcessedTariffAgreement) => ({
+              ...a,
+              validFrom: new Date(a.validFrom),
+              validTo: a.validTo ? new Date(a.validTo) : null,
+            }));
+          }
+          if (parsed.gas?.agreements) {
+            parsed.gas.agreements = parsed.gas.agreements.map((a: ProcessedTariffAgreement) => ({
+              ...a,
+              validFrom: new Date(a.validFrom),
+              validTo: a.validTo ? new Date(a.validTo) : null,
+            }));
+          }
+          setAccountDataState(parsed);
+        } catch (error) {
+          console.error('[ConsumptionProvider] Error parsing account data:', error);
+          await AsyncStorage.removeItem(STORAGE_KEY_ACCOUNT_DATA);
         }
-        if (parsed.electricity?.agreements) {
-          parsed.electricity.agreements = parsed.electricity.agreements.map((a: ProcessedTariffAgreement) => ({
-            ...a,
-            validFrom: new Date(a.validFrom),
-            validTo: a.validTo ? new Date(a.validTo) : null,
-          }));
-        }
-        if (parsed.gas?.agreements) {
-          parsed.gas.agreements = parsed.gas.agreements.map((a: ProcessedTariffAgreement) => ({
-            ...a,
-            validFrom: new Date(a.validFrom),
-            validTo: a.validTo ? new Date(a.validTo) : null,
-          }));
-        }
-        setAccountDataState(parsed);
       }
       return stored;
     },

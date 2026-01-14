@@ -29,10 +29,16 @@ export const [NotificationSettingsProvider, useNotificationSettings] = createCon
     queryFn: async () => {
       const stored = await AsyncStorage.getItem(STORAGE_KEY_NOTIFICATIONS);
       if (stored) {
-        const parsed = JSON.parse(stored);
-        setNotificationSettings(parsed);
+        try {
+          const parsed = JSON.parse(stored);
+          setNotificationSettings(parsed);
+          return parsed;
+        } catch (error) {
+          console.error('[NotificationSettings] Error parsing settings:', error);
+          await AsyncStorage.removeItem(STORAGE_KEY_NOTIFICATIONS);
+        }
       }
-      return stored ? JSON.parse(stored) : DEFAULT_NOTIFICATION_SETTINGS;
+      return DEFAULT_NOTIFICATION_SETTINGS;
     },
     staleTime: Infinity,
     gcTime: Infinity,

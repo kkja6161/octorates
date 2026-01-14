@@ -46,15 +46,20 @@ export const [EnergyRatesProvider, useEnergyRates] = createContextHook(() => {
     queryFn: async () => {
       const stored = await AsyncStorage.getItem(STORAGE_KEY_ACCOUNT_DATA);
       if (stored) {
-        const parsed = JSON.parse(stored);
-        if (parsed.region) {
-          setSelectedRegion(parsed.region);
-        }
-        if (parsed.electricity?.currentAgreement?.productCode) {
-          setSelectedElectricityProductCode(parsed.electricity.currentAgreement.productCode);
-        }
-        if (parsed.gas?.currentAgreement?.productCode) {
-          setSelectedGasProductCode(parsed.gas.currentAgreement.productCode);
+        try {
+          const parsed = JSON.parse(stored);
+          if (parsed.region) {
+            setSelectedRegion(parsed.region);
+          }
+          if (parsed.electricity?.currentAgreement?.productCode) {
+            setSelectedElectricityProductCode(parsed.electricity.currentAgreement.productCode);
+          }
+          if (parsed.gas?.currentAgreement?.productCode) {
+            setSelectedGasProductCode(parsed.gas.currentAgreement.productCode);
+          }
+        } catch (error) {
+          console.error('[EnergyRatesProvider] Error parsing account data:', error);
+          await AsyncStorage.removeItem(STORAGE_KEY_ACCOUNT_DATA);
         }
       }
       
@@ -77,17 +82,21 @@ export const [EnergyRatesProvider, useEnergyRates] = createContextHook(() => {
       if (stored) {
         const accountDataStored = await AsyncStorage.getItem(STORAGE_KEY_ACCOUNT_DATA);
         if (accountDataStored) {
-          const accountData = JSON.parse(accountDataStored);
-          if (accountData.electricity?.agreements) {
-            const agreements = accountData.electricity.agreements.map((a: ProcessedTariffAgreement) => ({
-              ...a,
-              validFrom: new Date(a.validFrom),
-              validTo: a.validTo ? new Date(a.validTo) : null,
-            }));
-            const selected = agreements.find((a: ProcessedTariffAgreement) => a.tariffCode === stored);
-            if (selected) {
-              setSelectedElectricityProductCode(selected.productCode);
+          try {
+            const accountData = JSON.parse(accountDataStored);
+            if (accountData.electricity?.agreements) {
+              const agreements = accountData.electricity.agreements.map((a: ProcessedTariffAgreement) => ({
+                ...a,
+                validFrom: new Date(a.validFrom),
+                validTo: a.validTo ? new Date(a.validTo) : null,
+              }));
+              const selected = agreements.find((a: ProcessedTariffAgreement) => a.tariffCode === stored);
+              if (selected) {
+                setSelectedElectricityProductCode(selected.productCode);
+              }
             }
+          } catch (error) {
+            console.error('[EnergyRatesProvider] Error parsing account data for electricity tariff:', error);
           }
         }
       }
@@ -104,17 +113,21 @@ export const [EnergyRatesProvider, useEnergyRates] = createContextHook(() => {
       if (stored) {
         const accountDataStored = await AsyncStorage.getItem(STORAGE_KEY_ACCOUNT_DATA);
         if (accountDataStored) {
-          const accountData = JSON.parse(accountDataStored);
-          if (accountData.gas?.agreements) {
-            const agreements = accountData.gas.agreements.map((a: ProcessedTariffAgreement) => ({
-              ...a,
-              validFrom: new Date(a.validFrom),
-              validTo: a.validTo ? new Date(a.validTo) : null,
-            }));
-            const selected = agreements.find((a: ProcessedTariffAgreement) => a.tariffCode === stored);
-            if (selected) {
-              setSelectedGasProductCode(selected.productCode);
+          try {
+            const accountData = JSON.parse(accountDataStored);
+            if (accountData.gas?.agreements) {
+              const agreements = accountData.gas.agreements.map((a: ProcessedTariffAgreement) => ({
+                ...a,
+                validFrom: new Date(a.validFrom),
+                validTo: a.validTo ? new Date(a.validTo) : null,
+              }));
+              const selected = agreements.find((a: ProcessedTariffAgreement) => a.tariffCode === stored);
+              if (selected) {
+                setSelectedGasProductCode(selected.productCode);
+              }
             }
+          } catch (error) {
+            console.error('[EnergyRatesProvider] Error parsing account data for gas tariff:', error);
           }
         }
       }
@@ -265,10 +278,16 @@ export const [EnergyRatesProvider, useEnergyRates] = createContextHook(() => {
     queryFn: async () => {
       const stored = await AsyncStorage.getItem(STORAGE_KEY_ELECTRICITY_THRESHOLDS);
       if (stored) {
-        const parsed = JSON.parse(stored);
-        setElectricityThresholds(parsed);
+        try {
+          const parsed = JSON.parse(stored);
+          setElectricityThresholds(parsed);
+          return parsed;
+        } catch (error) {
+          console.error('[EnergyRatesProvider] Error parsing electricity thresholds:', error);
+          await AsyncStorage.removeItem(STORAGE_KEY_ELECTRICITY_THRESHOLDS);
+        }
       }
-      return stored ? JSON.parse(stored) : DEFAULT_ELECTRICITY_THRESHOLDS;
+      return DEFAULT_ELECTRICITY_THRESHOLDS;
     },
     staleTime: Infinity,
     gcTime: Infinity,
@@ -279,10 +298,16 @@ export const [EnergyRatesProvider, useEnergyRates] = createContextHook(() => {
     queryFn: async () => {
       const stored = await AsyncStorage.getItem(STORAGE_KEY_GAS_THRESHOLDS);
       if (stored) {
-        const parsed = JSON.parse(stored);
-        setGasThresholds(parsed);
+        try {
+          const parsed = JSON.parse(stored);
+          setGasThresholds(parsed);
+          return parsed;
+        } catch (error) {
+          console.error('[EnergyRatesProvider] Error parsing gas thresholds:', error);
+          await AsyncStorage.removeItem(STORAGE_KEY_GAS_THRESHOLDS);
+        }
       }
-      return stored ? JSON.parse(stored) : DEFAULT_GAS_THRESHOLDS;
+      return DEFAULT_GAS_THRESHOLDS;
     },
     staleTime: Infinity,
     gcTime: Infinity,
@@ -370,9 +395,13 @@ export const [EnergyRatesProvider, useEnergyRates] = createContextHook(() => {
         try {
           const storedSettings = await AsyncStorage.getItem(STORAGE_KEY_NOTIFICATION_SETTINGS);
           if (storedSettings) {
-            const settings = JSON.parse(storedSettings);
-            if (settings.enabled && settings.notifyNewAgileRates) {
-              await checkAndNotifyNewAgileRates(tomorrowElectricityRates, true);
+            try {
+              const settings = JSON.parse(storedSettings);
+              if (settings.enabled && settings.notifyNewAgileRates) {
+                await checkAndNotifyNewAgileRates(tomorrowElectricityRates, true);
+              }
+            } catch (parseError) {
+              console.error('[EnergyRatesProvider] Error parsing notification settings:', parseError);
             }
           }
         } catch (error) {
