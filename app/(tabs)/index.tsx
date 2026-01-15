@@ -49,7 +49,7 @@ export default function HomeScreen() {
     selectedRegion,
   } = useEnergyRates();
   
-  const { showGas } = useConsumption();
+  const { showGas, showNetFlux } = useConsumption();
   
   const { comparisonElectricityRate, comparisonGasRate, comparisonElectricityTariffName, comparisonGasTariffName } = useComparisonRate();
   
@@ -559,14 +559,16 @@ export default function HomeScreen() {
 
                 {isAgile && (
                   <>
-                    <NetFluxTicker
-                      importRate={currentElectricityRate?.price || null}
-                      exportRate={null}
-                      currentLoad={null}
-                      currentGeneration={null}
-                      colors={colors}
-                      isDark={isDark}
-                    />
+                    {showNetFlux && (
+                      <NetFluxTicker
+                        importRate={currentElectricityRate?.price || null}
+                        exportRate={null}
+                        currentLoad={null}
+                        currentGeneration={null}
+                        colors={colors}
+                        isDark={isDark}
+                      />
+                    )}
                     <AgileForecastCard
                       region={selectedRegion}
                       colors={colors}

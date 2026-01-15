@@ -30,6 +30,7 @@ const STORAGE_KEY_ELECTRICITY_COMPARISON_TARIFF = '@consumption:electricity_comp
 const STORAGE_KEY_GAS_COMPARISON_TARIFF = '@consumption:gas_comparison_tariff';
 const STORAGE_KEY_GAS_CV = '@consumption:gas_cv';
 const STORAGE_KEY_TUTORIAL_COMPLETED = '@tutorial:completed_v2';
+const STORAGE_KEY_SHOW_NET_FLUX = '@consumption:show_net_flux';
 
 const FLEXIBLE_TARIFF_CODE = 'VAR-22-11-01';
 const DEFAULT_GAS_CV = 39.0;
@@ -93,6 +94,7 @@ export const [ConsumptionProvider, useConsumption] = createContextHook(() => {
   const [isAccountLoading, setIsAccountLoading] = useState<boolean>(false);
   const [accountError, setAccountError] = useState<string | null>(null);
   const [gasCv, setGasCvState] = useState<number>(DEFAULT_GAS_CV);
+  const [showNetFlux, setShowNetFluxState] = useState<boolean>(true);
 
   const selectedRegion = accountData?.region || DEFAULT_GSP_REGION;
   const electricityMpan = accountData?.electricity?.mpan || null;
@@ -258,6 +260,19 @@ export const [ConsumptionProvider, useConsumption] = createContextHook(() => {
     gcTime: Infinity,
   });
 
+  useQuery({
+    queryKey: ['stored-show-net-flux'],
+    queryFn: async () => {
+      const stored = await AsyncStorage.getItem(STORAGE_KEY_SHOW_NET_FLUX);
+      if (stored !== null) {
+        setShowNetFluxState(stored === 'true');
+      }
+      return stored;
+    },
+    staleTime: Infinity,
+    gcTime: Infinity,
+  });
+
   const saveApiKeyMutation = useMutation({
     mutationFn: async (key: string) => {
       await AsyncStorage.setItem(STORAGE_KEY_API_KEY, key);
@@ -351,6 +366,15 @@ export const [ConsumptionProvider, useConsumption] = createContextHook(() => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['gas-consumption'] });
+    },
+  });
+
+  const saveShowNetFluxMutation = useMutation({
+    mutationFn: async (show: boolean) => {
+      console.log('[ConsumptionProvider] Saving show net flux:', show);
+      await AsyncStorage.setItem(STORAGE_KEY_SHOW_NET_FLUX, show.toString());
+      setShowNetFluxState(show);
+      return show;
     },
   });
 
@@ -1309,5 +1333,7 @@ export const [ConsumptionProvider, useConsumption] = createContextHook(() => {
     comparisonGasStandingCharge: comparisonGasStandingChargeQuery.data || null,
     electricityComparisonAvailability,
     gasComparisonAvailability,
+    showNetFlux,
+    setShowNetFlux: saveShowNetFluxMutation.mutate,
   };
 });

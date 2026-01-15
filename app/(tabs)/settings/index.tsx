@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Zap, Flame, ChevronRight, Palette, GitCompare, Bell, User, CheckCircle, Calculator, Trash2, FileText, Accessibility } from 'lucide-react-native';
+import { Zap, Flame, ChevronRight, Palette, GitCompare, Bell, User, CheckCircle, Calculator, Trash2, FileText, Accessibility, Activity } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Linking from 'expo-linking';
 
@@ -39,6 +39,8 @@ export default function SettingsScreen() {
     gasComparisonTariff,
     showGas,
     setShowGas,
+    showNetFlux,
+    setShowNetFlux,
   } = useConsumption();
   
   const {
@@ -551,6 +553,34 @@ export default function SettingsScreen() {
               </View>
               <ChevronRight size={20} color={colors.text.secondary} />
             </Pressable>
+          </View>
+
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Dashboard</Text>
+            
+            <View style={styles.settingItem}>
+              <View style={styles.settingLeft}>
+                <View style={[styles.iconContainer, { backgroundColor: '#dcfce7' }]}>
+                  <Activity size={20} color="#16a34a" />
+                </View>
+                <View style={styles.settingTextContainer}>
+                  <Text style={styles.settingLabel}>Net Flux Card</Text>
+                  <Text style={styles.settingValue}>
+                    {showNetFlux ? 'Visible on dashboard' : 'Hidden'}
+                  </Text>
+                </View>
+              </View>
+              <Switch
+                value={showNetFlux}
+                onValueChange={setShowNetFlux}
+                trackColor={{ false: colors.border, true: colors.primary }}
+                thumbColor={colors.surface}
+              />
+            </View>
+            
+            <Text style={styles.comparisonHelpText}>
+              The Net Flux card shows real-time cost/earnings flow for Agile tariff users.
+            </Text>
           </View>
 
           <View style={styles.section}>
