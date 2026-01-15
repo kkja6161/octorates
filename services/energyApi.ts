@@ -1178,12 +1178,82 @@ export interface AccountMetersResponse {
 
 const OCTOPUS_GRAPHQL_URL = 'https://api.octopus.energy/v1/graphql/';
 
+// Cache for Kraken tokens
+let cachedKrakenToken: { token: string; expiresAt: Date } | null = null;
+
+async function obtainKrakenToken(apiKey: string): Promise<string | null> {
+  // Check if we have a valid cached token
+  if (cachedKrakenToken && cachedKrakenToken.expiresAt > new Date()) {
+    console.log('[Energy API] Using cached Kraken token');
+    return cachedKrakenToken.token;
+  }
+  
+  console.log('[Energy API] Obtaining new Kraken token...');
+  
+  const mutation = `
+    mutation ObtainKrakenToken($apiKey: String!) {
+      obtainKrakenToken(input: { APIKey: $apiKey }) {
+        token
+      }
+    }
+  `;
+  
+  try {
+    const response = await fetch(OCTOPUS_GRAPHQL_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        query: mutation,
+        variables: { apiKey },
+      }),
+    });
+    
+    if (!response.ok) {
+      console.error('[Energy API] Failed to obtain Kraken token:', response.status);
+      return null;
+    }
+    
+    const data = await response.json();
+    
+    if (data.errors && data.errors.length > 0) {
+      console.error('[Energy API] Kraken token errors:', data.errors);
+      return null;
+    }
+    
+    const token = data.data?.obtainKrakenToken?.token;
+    if (token) {
+      // Cache the token - Kraken tokens typically last 1 hour
+      cachedKrakenToken = {
+        token,
+        expiresAt: new Date(Date.now() + 55 * 60 * 1000), // 55 minutes to be safe
+      };
+      console.log('[Energy API] Kraken token obtained successfully');
+      return token;
+    }
+    
+    console.error('[Energy API] No token in response');
+    return null;
+  } catch (error) {
+    console.error('[Energy API] Error obtaining Kraken token:', error);
+    return null;
+  }
+}
+
 export async function fetchMeterDeviceId(
   accountNumber: string,
   apiKey: string
 ): Promise<MeterDeviceInfo | null> {
   console.log('[Energy API] ========== FETCH METER DEVICE ID ==========');
   console.log('[Energy API] Account:', accountNumber);
+  
+  // First obtain a Kraken token
+  const krakenToken = await obtainKrakenToken(apiKey);
+  if (!krakenToken) {
+    console.error('[Energy API] Could not obtain Kraken token for meter device query');
+    return null;
+  }
   
   const query = `
     query GetMeterDevices($accountNumber: String!) {
@@ -1207,7 +1277,7 @@ export async function fetchMeterDeviceId(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Basic ${btoa(apiKey + ':')}`,
+        'Authorization': krakenToken,
       },
       body: JSON.stringify({
         query,
@@ -1266,6 +1336,13 @@ export async function fetchSmartMeterTelemetry(
   console.log('[Energy API] Device ID:', deviceId);
   console.log('[Energy API] Grouping:', grouping);
   
+  // First obtain a Kraken token
+  const krakenToken = await obtainKrakenToken(apiKey);
+  if (!krakenToken) {
+    console.error('[Energy API] Could not obtain Kraken token for telemetry query');
+    return null;
+  }
+  
   const now = new Date();
   const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
   
@@ -1289,7 +1366,7 @@ export async function fetchSmartMeterTelemetry(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Basic ${btoa(apiKey + ':')}`,
+        'Authorization': krakenToken,
       },
       body: JSON.stringify({
         query,
