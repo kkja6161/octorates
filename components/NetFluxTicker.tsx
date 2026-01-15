@@ -272,7 +272,7 @@ export function NetFluxTicker({
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <Animated.View style={[styles.liveDot, { opacity: pulseAnim }]} />
             <Text style={styles.fluxBadgeText}>
-              {isEarning ? 'Earning' : 'Spending'}
+              {isEarning ? 'Earning' : 'Cost'}
             </Text>
           </View>
         </View>
