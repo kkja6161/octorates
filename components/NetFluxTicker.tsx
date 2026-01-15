@@ -45,8 +45,8 @@ export function NetFluxTicker({
       return;
     }
 
-    const load = currentLoad ?? 0;
-    const generation = currentGeneration ?? 0;
+    const load = Number(currentLoad) || 0;
+    const generation = Number(currentGeneration) || 0;
 
     const importCost = (importRate / 100) * load;
     
@@ -261,7 +261,7 @@ export function NetFluxTicker({
           <View style={styles.detailItem}>
             <Text style={styles.detailLabel}>Import Rate</Text>
             <Text style={[styles.detailValue, styles.importValue]}>
-              {importRate?.toFixed(1)}p/kWh{hasRealTimeData ? ` @ ${(currentLoad ?? 0).toFixed(2)}kW` : ''}
+              {importRate?.toFixed(1)}p/kWh{hasRealTimeData ? ` @ ${(Number(currentLoad) || 0).toFixed(2)}kW` : ''}
             </Text>
           </View>
           
@@ -272,7 +272,7 @@ export function NetFluxTicker({
                 <Text style={styles.detailLabel}>Export</Text>
               </View>
               <Text style={[styles.detailValue, styles.exportValue]}>
-                {exportRate?.toFixed(1)}p @ {(currentGeneration ?? 0).toFixed(2)}kW
+                {exportRate?.toFixed(1)}p @ {(Number(currentGeneration) || 0).toFixed(2)}kW
               </Text>
             </View>
           )}
