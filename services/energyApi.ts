@@ -1041,7 +1041,7 @@ export async function fetchGridStatus(): Promise<GridStatusData | null> {
   }
 }
 
-const AGILE_PREDICT_API = 'https://prices.fly.dev/api';
+const AGILE_PREDICT_API = 'https://agilepredict.com/api';
 
 export async function fetchAgilePrediction(
   region: string = 'C',
@@ -1050,64 +1050,83 @@ export async function fetchAgilePrediction(
   console.log('[Energy API] ========== FETCH AGILE PREDICTION ==========');
   console.log(`[Energy API] Region: ${region}, Days: ${days}`);
   
-  try {
-    const url = `${AGILE_PREDICT_API}/${region}?days=${days}&forecast_count=1&high_low=True`;
-    console.log('[Energy API] Agile Predict URL:', url);
-    
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
-    
-    const response = await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        'Accept': 'application/json',
-      },
-    });
-    
-    clearTimeout(timeoutId);
-    
-    if (!response.ok) {
-      console.log('[Energy API] Agile Predict API returned status:', response.status);
-      console.log('[Energy API] Note: Forecast is optional and non-critical');
-      return [];
-    }
-    
-    const data: AgilePredictForecast[] = await response.json();
-    
-    if (!data || data.length === 0 || !data[0].prices) {
-      console.log('[Energy API] No Agile Predict data available');
-      return [];
-    }
-    
-    const forecast = data[0];
-    console.log('[Energy API] Agile Predict forecast:', forecast.name, 'created:', forecast.created_at);
-    console.log('[Energy API] Agile Predict prices count:', forecast.prices.length);
-    
-    const processed: ProcessedForecastRate[] = forecast.prices.map(price => {
-      const validFrom = new Date(price.date_time);
-      return {
-        price: price.agile_pred,
-        lowPrice: price.agile_pred_low,
-        highPrice: price.agile_pred_high,
-        time: validFrom.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
-        date: validFrom.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }),
-        validFrom,
-      };
-    }).sort((a, b) => a.validFrom.getTime() - b.validFrom.getTime());
-    
-    console.log('[Energy API] Processed forecast rates:', processed.length);
-    return processed;
-  } catch (error) {
-    if (error instanceof Error) {
-      if (error.name === 'AbortError') {
-        console.log('[Energy API] Agile Predict request timeout (10s) - service may be unavailable');
-      } else {
-        console.log('[Energy API] Agile Predict unavailable:', error.message);
+  const endpoints = [
+    `${AGILE_PREDICT_API}/${region}?days=${days}&forecast_count=1&high_low=True`,
+    `https://agilepredict.com/api/${region}?days=${days}&forecast_count=1&high_low=True`,
+  ];
+  
+  for (const url of endpoints) {
+    try {
+      console.log('[Energy API] Trying Agile Predict URL:', url);
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      
+      const response = await fetch(url, {
+        signal: controller.signal,
+        headers: {
+          'Accept': 'application/json',
+        },
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        console.log('[Energy API] Agile Predict API returned status:', response.status);
+        continue;
+      }
+      
+      const text = await response.text();
+      if (!text || text.trim() === '') {
+        console.log('[Energy API] Empty response from Agile Predict');
+        continue;
+      }
+      
+      let data: AgilePredictForecast[];
+      try {
+        data = JSON.parse(text);
+      } catch (parseError) {
+        console.log('[Energy API] Failed to parse Agile Predict response:', parseError);
+        continue;
+      }
+      
+      if (!data || data.length === 0 || !data[0].prices) {
+        console.log('[Energy API] No Agile Predict data available');
+        continue;
+      }
+      
+      const forecast = data[0];
+      console.log('[Energy API] Agile Predict forecast:', forecast.name, 'created:', forecast.created_at);
+      console.log('[Energy API] Agile Predict prices count:', forecast.prices.length);
+      
+      const processed: ProcessedForecastRate[] = forecast.prices.map(price => {
+        const validFrom = new Date(price.date_time);
+        return {
+          price: price.agile_pred,
+          lowPrice: price.agile_pred_low,
+          highPrice: price.agile_pred_high,
+          time: validFrom.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+          date: validFrom.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }),
+          validFrom,
+        };
+      }).sort((a, b) => a.validFrom.getTime() - b.validFrom.getTime());
+      
+      console.log('[Energy API] Processed forecast rates:', processed.length);
+      return processed;
+    } catch (error) {
+      if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          console.log('[Energy API] Agile Predict request timeout (15s) for URL:', url);
+        } else {
+          console.log('[Energy API] Agile Predict error for URL:', url, error.message);
+        }
       }
     }
-    console.log('[Energy API] Note: Forecast feature is optional, app will continue without it');
-    return [];
   }
+  
+  console.log('[Energy API] All Agile Predict endpoints failed');
+  console.log('[Energy API] Note: Forecast feature is optional, app will continue without it');
+  return [];
 }
 
 export interface ProductDetails {
