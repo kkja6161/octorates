@@ -45,13 +45,14 @@ export function NetFluxTicker({
       return;
     }
 
-    const load = Number(currentLoad) || 0;
-    const generation = Number(currentGeneration) || 0;
+    // Telemetry returns demand in Watts, convert to kW for calculation
+    const loadKw = (Number(currentLoad) || 0) / 1000;
+    const generationKw = (Number(currentGeneration) || 0) / 1000;
 
-    const importCost = (importRate / 100) * load;
+    const importCost = (importRate / 100) * loadKw;
     
-    const exportEarnings = (exportRate && generation > 0) 
-      ? (exportRate / 100) * generation 
+    const exportEarnings = (exportRate && generationKw > 0) 
+      ? (exportRate / 100) * generationKw 
       : 0;
 
     const flux = importCost - exportEarnings;
@@ -60,8 +61,8 @@ export function NetFluxTicker({
 
     console.log('[NetFlux] Import Rate:', importRate, 'p/kWh');
     console.log('[NetFlux] Export Rate:', exportRate, 'p/kWh');
-    console.log('[NetFlux] Current Load:', load, 'kW');
-    console.log('[NetFlux] Current Generation:', generation, 'kW');
+    console.log('[NetFlux] Current Load:', currentLoad, 'W =', loadKw.toFixed(3), 'kW');
+    console.log('[NetFlux] Current Generation:', currentGeneration, 'W =', generationKw.toFixed(3), 'kW');
     console.log('[NetFlux] Net Flux:', flux.toFixed(4), '£/h', flux < 0 ? '(EARNING)' : '(COST)');
   }, [importRate, exportRate, currentLoad, currentGeneration]);
 
@@ -261,7 +262,7 @@ export function NetFluxTicker({
           <View style={styles.detailItem}>
             <Text style={styles.detailLabel}>Import Rate</Text>
             <Text style={[styles.detailValue, styles.importValue]}>
-              {importRate?.toFixed(1)}p/kWh{hasRealTimeData ? ` @ ${(Number(currentLoad) || 0).toFixed(2)}kW` : ''}
+              {importRate?.toFixed(1)}p/kWh{hasRealTimeData ? ` @ ${((Number(currentLoad) || 0) / 1000).toFixed(2)}kW` : ''}
             </Text>
           </View>
           
@@ -272,7 +273,7 @@ export function NetFluxTicker({
                 <Text style={styles.detailLabel}>Export</Text>
               </View>
               <Text style={[styles.detailValue, styles.exportValue]}>
-                {exportRate?.toFixed(1)}p @ {(Number(currentGeneration) || 0).toFixed(2)}kW
+                {exportRate?.toFixed(1)}p @ {((Number(currentGeneration) || 0) / 1000).toFixed(2)}kW
               </Text>
             </View>
           )}
