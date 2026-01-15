@@ -399,6 +399,19 @@ export default function HomeScreen() {
             </Link>
           </View>
           <GridStatusCard colors={colors} isDark={isDark} />
+          {showNetFlux && selectedElectricityTariff && isAgileTariff(selectedElectricityTariff) && (
+            <>
+              <View style={{ height: 8 }} />
+              <NetFluxTicker
+                importRate={currentElectricityRate?.price || null}
+                exportRate={null}
+                currentLoad={liveDemand}
+                currentGeneration={null}
+                colors={colors}
+                isDark={isDark}
+              />
+            </>
+          )}
           <View style={{ height: 12 }} />
           <View style={styles.fuelTypesContainer}>
             <Pressable
@@ -559,16 +572,6 @@ export default function HomeScreen() {
 
                 {isAgile && (
                   <>
-                    {showNetFlux && (
-                      <NetFluxTicker
-                        importRate={currentElectricityRate?.price || null}
-                        exportRate={null}
-                        currentLoad={liveDemand}
-                        currentGeneration={null}
-                        colors={colors}
-                        isDark={isDark}
-                      />
-                    )}
                     <AgileForecastCard
                       region={selectedRegion}
                       colors={colors}

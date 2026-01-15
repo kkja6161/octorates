@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -6,7 +6,7 @@ import {
   Animated,
   Pressable,
 } from 'react-native';
-import { TrendingUp, TrendingDown, Zap, Sun } from 'lucide-react-native';
+import { TrendingUp, TrendingDown, Zap, Sun, ChevronDown, ChevronUp } from 'lucide-react-native';
 
 interface NetFluxTickerProps {
   importRate: number | null;
@@ -36,8 +36,8 @@ export function NetFluxTicker({
 }: NetFluxTickerProps) {
   const [netFlux, setNetFlux] = useState<number | null>(null);
   const [isEarning, setIsEarning] = useState(false);
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-  const glowAnim = useRef(new Animated.Value(0)).current;
+  const [expanded, setExpanded] = useState(false);
+  const [pulseAnim] = useState(new Animated.Value(1));
 
   useEffect(() => {
     if (importRate === null) {
@@ -70,7 +70,7 @@ export function NetFluxTicker({
     const pulse = Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, {
-          toValue: 1.05,
+          toValue: 0.4,
           duration: 1000,
           useNativeDriver: true,
         }),
@@ -85,27 +85,6 @@ export function NetFluxTicker({
 
     return () => pulse.stop();
   }, [pulseAnim]);
-
-  useEffect(() => {
-    if (isEarning) {
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(glowAnim, {
-            toValue: 1,
-            duration: 1500,
-            useNativeDriver: false,
-          }),
-          Animated.timing(glowAnim, {
-            toValue: 0,
-            duration: 1500,
-            useNativeDriver: false,
-          }),
-        ])
-      ).start();
-    } else {
-      glowAnim.setValue(0);
-    }
-  }, [isEarning, glowAnim]);
 
   const formatFlux = (value: number): string => {
     const absValue = Math.abs(value);
@@ -124,77 +103,89 @@ export function NetFluxTicker({
   }
 
   const fluxColor = isEarning ? colors.success : colors.error;
-  const bgColor = isEarning 
-    ? (isDark ? 'rgba(34, 197, 94, 0.15)' : 'rgba(34, 197, 94, 0.1)')
-    : (isDark ? 'rgba(239, 68, 68, 0.15)' : 'rgba(239, 68, 68, 0.1)');
+
+  const toggleExpanded = () => {
+    setExpanded(!expanded);
+  };
 
   const styles = StyleSheet.create({
     container: {
-      backgroundColor: bgColor,
-      borderRadius: 16,
-      padding: 16,
-      borderWidth: 1,
-      borderColor: isEarning ? colors.success : colors.error,
+      backgroundColor: colors.surface,
+      borderRadius: 12,
+      overflow: 'hidden',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: isDark ? 0.2 : 0.05,
+      shadowRadius: 4,
+      elevation: 2,
     },
-    headerRow: {
+    header: {
       flexDirection: 'row',
-      justifyContent: 'space-between',
       alignItems: 'center',
-      marginBottom: 12,
+      justifyContent: 'space-between',
+      padding: 12,
     },
-    titleContainer: {
+    headerLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      flex: 1,
+    },
+    label: {
+      fontSize: 14,
+      fontWeight: '600' as const,
+      color: colors.text.secondary,
+      letterSpacing: 0.5,
+    },
+    statsRow: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 8,
+      flex: 1,
     },
-    title: {
-      fontSize: 14,
-      fontWeight: '600',
-      color: colors.text.secondary,
-      textTransform: 'uppercase',
-      letterSpacing: 0.5,
-    },
-    liveIndicator: {
+    statItem: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 4,
     },
+    statValue: {
+      fontSize: 15,
+      fontWeight: '600' as const,
+      color: colors.text.primary,
+    },
+    fluxBadge: {
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: 6,
+      backgroundColor: isEarning 
+        ? (isDark ? 'rgba(34, 197, 94, 0.2)' : 'rgba(34, 197, 94, 0.15)')
+        : (isDark ? 'rgba(239, 68, 68, 0.2)' : 'rgba(239, 68, 68, 0.15)'),
+    },
+    fluxBadgeText: {
+      fontSize: 13,
+      fontWeight: '700' as const,
+      color: fluxColor,
+    },
     liveDot: {
-      width: 8,
-      height: 8,
-      borderRadius: 4,
+      width: 6,
+      height: 6,
+      borderRadius: 3,
       backgroundColor: fluxColor,
+      marginRight: 4,
     },
-    liveText: {
-      fontSize: 11,
-      fontWeight: '700',
-      color: fluxColor,
-      textTransform: 'uppercase',
+    expandButton: {
+      padding: 4,
     },
-    fluxRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 12,
-    },
-    fluxValue: {
-      fontSize: 32,
-      fontWeight: '800',
-      color: fluxColor,
-    },
-    fluxLabel: {
-      fontSize: 14,
-      fontWeight: '600',
-      color: fluxColor,
-      marginTop: 4,
+    expandedContent: {
+      paddingHorizontal: 12,
+      paddingBottom: 12,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
     },
     detailsRow: {
       flexDirection: 'row',
       justifyContent: 'space-around',
-      marginTop: 16,
       paddingTop: 12,
-      borderTopWidth: 1,
-      borderTopColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
     },
     detailItem: {
       alignItems: 'center',
@@ -203,11 +194,11 @@ export function NetFluxTicker({
     detailLabel: {
       fontSize: 11,
       color: colors.text.secondary,
-      textTransform: 'uppercase',
+      textTransform: 'uppercase' as const,
     },
     detailValue: {
       fontSize: 14,
-      fontWeight: '600',
+      fontWeight: '600' as const,
       color: colors.text.primary,
     },
     importValue: {
@@ -216,85 +207,146 @@ export function NetFluxTicker({
     exportValue: {
       color: colors.success,
     },
+    summaryRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      marginTop: 10,
+      paddingTop: 10,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+    },
+    summaryItem: {
+      alignItems: 'center',
+      flex: 1,
+    },
+    summaryLabel: {
+      fontSize: 12,
+      color: colors.text.secondary,
+      marginBottom: 2,
+    },
+    summaryValue: {
+      fontSize: 16,
+      fontWeight: '700' as const,
+    },
     noExportBadge: {
-      backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
+      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
       paddingHorizontal: 8,
-      paddingVertical: 4,
+      paddingVertical: 6,
       borderRadius: 8,
-      marginTop: 8,
+      marginTop: 10,
     },
     noExportText: {
       fontSize: 11,
       color: colors.text.secondary,
-      textAlign: 'center',
+      textAlign: 'center' as const,
     },
   });
 
+  const loadKw = (Number(currentLoad) || 0) / 1000;
+
   return (
-    <Pressable onPress={onPress} disabled={!onPress}>
-      <Animated.View style={[styles.container, { transform: [{ scale: pulseAnim }] }]}>
-        <View style={styles.headerRow}>
-          <View style={styles.titleContainer}>
-            <Zap size={16} color={fluxColor} />
-            <Text style={styles.title}>Net Flux</Text>
+    <View style={styles.container}>
+      <Pressable style={styles.header} onPress={toggleExpanded}>
+        <View style={styles.headerLeft}>
+          <Zap size={16} color={fluxColor} />
+          <Text style={styles.label}>NET FLUX</Text>
+          <View style={styles.statsRow}>
+            <View style={styles.statItem}>
+              {isEarning ? (
+                <TrendingUp size={14} color={colors.success} />
+              ) : (
+                <TrendingDown size={14} color={colors.error} />
+              )}
+              <Text style={[styles.statValue, { color: fluxColor }]}>
+                {formatFlux(netFlux ?? 0)}
+              </Text>
+            </View>
+            {hasRealTimeData && (
+              <Text style={{ fontSize: 13, color: colors.text.secondary }}>
+                @ {loadKw.toFixed(2)}kW
+              </Text>
+            )}
           </View>
-          <View style={styles.liveIndicator}>
+        </View>
+        <View style={styles.fluxBadge}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <Animated.View style={[styles.liveDot, { opacity: pulseAnim }]} />
-            <Text style={styles.liveText}>Live</Text>
-          </View>
-        </View>
-
-        <View style={styles.fluxRow}>
-          {isEarning ? (
-            <TrendingUp size={28} color={colors.success} />
-          ) : (
-            <TrendingDown size={28} color={colors.error} />
-          )}
-          <Text style={styles.fluxValue}>
-            {isEarning ? '+' : '-'}{formatFlux(netFlux ?? 0)}
-          </Text>
-        </View>
-        <Text style={[styles.fluxLabel, { textAlign: 'center' }]}>
-          {isEarning ? 'Earning' : 'Spending'}
-        </Text>
-
-        <View style={styles.detailsRow}>
-          <View style={styles.detailItem}>
-            <Text style={styles.detailLabel}>Import Rate</Text>
-            <Text style={[styles.detailValue, styles.importValue]}>
-              {importRate?.toFixed(1)}p/kWh{hasRealTimeData ? ` @ ${((Number(currentLoad) || 0) / 1000).toFixed(2)}kW` : ''}
+            <Text style={styles.fluxBadgeText}>
+              {isEarning ? 'Earning' : 'Spending'}
             </Text>
           </View>
-          
-          {hasExportTariff && hasGeneration && (
+        </View>
+        <View style={styles.expandButton}>
+          {expanded ? (
+            <ChevronUp size={18} color={colors.text.secondary} />
+          ) : (
+            <ChevronDown size={18} color={colors.text.secondary} />
+          )}
+        </View>
+      </Pressable>
+
+      {expanded && (
+        <View style={styles.expandedContent}>
+          <View style={styles.detailsRow}>
             <View style={styles.detailItem}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <Sun size={12} color={colors.success} />
-                <Text style={styles.detailLabel}>Export</Text>
+              <Text style={styles.detailLabel}>Import Rate</Text>
+              <Text style={[styles.detailValue, styles.importValue]}>
+                {importRate?.toFixed(1)}p/kWh
+              </Text>
+            </View>
+            {hasRealTimeData && (
+              <View style={styles.detailItem}>
+                <Text style={styles.detailLabel}>Current Load</Text>
+                <Text style={styles.detailValue}>
+                  {loadKw.toFixed(2)} kW
+                </Text>
               </View>
-              <Text style={[styles.detailValue, styles.exportValue]}>
-                {exportRate?.toFixed(1)}p @ {((Number(currentGeneration) || 0) / 1000).toFixed(2)}kW
+            )}
+            {hasExportTariff && hasGeneration && (
+              <View style={styles.detailItem}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <Sun size={12} color={colors.success} />
+                  <Text style={styles.detailLabel}>Export</Text>
+                </View>
+                <Text style={[styles.detailValue, styles.exportValue]}>
+                  {exportRate?.toFixed(1)}p @ {((Number(currentGeneration) || 0) / 1000).toFixed(2)}kW
+                </Text>
+              </View>
+            )}
+          </View>
+
+          <View style={styles.summaryRow}>
+            <View style={styles.summaryItem}>
+              <Text style={styles.summaryLabel}>Status</Text>
+              <Text style={[styles.summaryValue, { color: fluxColor }]}>
+                {isEarning ? 'Earning' : 'Spending'}
+              </Text>
+            </View>
+            <View style={styles.summaryItem}>
+              <Text style={styles.summaryLabel}>Hourly Rate</Text>
+              <Text style={[styles.summaryValue, { color: fluxColor }]}>
+                {formatFlux(netFlux ?? 0)}
+              </Text>
+            </View>
+          </View>
+
+          {!hasRealTimeData && (
+            <View style={styles.noExportBadge}>
+              <Text style={styles.noExportText}>
+                Rate-only mode. Connect smart meter for real-time tracking.
+              </Text>
+            </View>
+          )}
+
+          {hasRealTimeData && !hasExportTariff && (
+            <View style={styles.noExportBadge}>
+              <Text style={styles.noExportText}>
+                No export tariff detected. Add solar/battery to see earnings.
               </Text>
             </View>
           )}
         </View>
-
-        {!hasRealTimeData && (
-          <View style={styles.noExportBadge}>
-            <Text style={styles.noExportText}>
-              Rate-only mode. Connect a smart meter or home energy monitor for real-time cost tracking.
-            </Text>
-          </View>
-        )}
-
-        {hasRealTimeData && !hasExportTariff && (
-          <View style={styles.noExportBadge}>
-            <Text style={styles.noExportText}>
-              No export tariff detected. Add solar/battery export to see earnings.
-            </Text>
-          </View>
-        )}
-      </Animated.View>
-    </Pressable>
+      )}
+    </View>
   );
 }
