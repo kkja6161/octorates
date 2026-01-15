@@ -1139,6 +1139,206 @@ export interface ProductDetails {
   isTracker: boolean;
 }
 
+// Smart Meter Telemetry Types
+export interface SmartMeterTelemetryEntry {
+  readAt: string;
+  consumptionDelta: number;
+  demand: number; // Real-time power demand in kW
+}
+
+export interface SmartMeterTelemetryResponse {
+  data: {
+    smartMeterTelemetry: SmartMeterTelemetryEntry[] | null;
+  };
+  errors?: { message: string }[];
+}
+
+export interface MeterDeviceInfo {
+  deviceId: string;
+  serialNumber: string;
+}
+
+export interface AccountMetersResponse {
+  data: {
+    account: {
+      electricityAgreements: {
+        meterPoint: {
+          meters: {
+            smartDevices: {
+              deviceId: string;
+            }[];
+            serialNumber: string;
+          }[];
+        };
+      }[];
+    } | null;
+  };
+  errors?: { message: string }[];
+}
+
+const OCTOPUS_GRAPHQL_URL = 'https://api.octopus.energy/v1/graphql/';
+
+export async function fetchMeterDeviceId(
+  accountNumber: string,
+  apiKey: string
+): Promise<MeterDeviceInfo | null> {
+  console.log('[Energy API] ========== FETCH METER DEVICE ID ==========');
+  console.log('[Energy API] Account:', accountNumber);
+  
+  const query = `
+    query GetMeterDevices($accountNumber: String!) {
+      account(accountNumber: $accountNumber) {
+        electricityAgreements {
+          meterPoint {
+            meters {
+              serialNumber
+              smartDevices {
+                deviceId
+              }
+            }
+          }
+        }
+      }
+    }
+  `;
+  
+  try {
+    const response = await fetch(OCTOPUS_GRAPHQL_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Basic ${btoa(apiKey + ':')}`,
+      },
+      body: JSON.stringify({
+        query,
+        variables: { accountNumber },
+      }),
+    });
+    
+    if (!response.ok) {
+      console.error('[Energy API] GraphQL request failed:', response.status);
+      return null;
+    }
+    
+    const data: AccountMetersResponse = await response.json();
+    
+    if (data.errors && data.errors.length > 0) {
+      console.error('[Energy API] GraphQL errors:', data.errors);
+      return null;
+    }
+    
+    const agreements = data.data?.account?.electricityAgreements;
+    if (!agreements || agreements.length === 0) {
+      console.log('[Energy API] No electricity agreements found');
+      return null;
+    }
+    
+    for (const agreement of agreements) {
+      const meters = agreement.meterPoint?.meters;
+      if (meters) {
+        for (const meter of meters) {
+          if (meter.smartDevices && meter.smartDevices.length > 0) {
+            const deviceId = meter.smartDevices[0].deviceId;
+            console.log('[Energy API] Found smart meter device:', deviceId);
+            return {
+              deviceId,
+              serialNumber: meter.serialNumber,
+            };
+          }
+        }
+      }
+    }
+    
+    console.log('[Energy API] No smart devices found on meters');
+    return null;
+  } catch (error) {
+    console.error('[Energy API] Error fetching meter device ID:', error);
+    return null;
+  }
+}
+
+export async function fetchSmartMeterTelemetry(
+  deviceId: string,
+  apiKey: string,
+  grouping: 'TEN_SECONDS' | 'ONE_MINUTE' | 'FIVE_MINUTES' | 'HALF_HOURLY' = 'FIVE_MINUTES'
+): Promise<SmartMeterTelemetryEntry | null> {
+  console.log('[Energy API] ========== FETCH SMART METER TELEMETRY ==========');
+  console.log('[Energy API] Device ID:', deviceId);
+  console.log('[Energy API] Grouping:', grouping);
+  
+  const now = new Date();
+  const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+  
+  const query = `
+    query GetSmartMeterTelemetry($deviceId: String!, $start: DateTime!, $end: DateTime!, $grouping: TelemetryGrouping!) {
+      smartMeterTelemetry(
+        deviceId: $deviceId
+        grouping: $grouping
+        start: $start
+        end: $end
+      ) {
+        readAt
+        consumptionDelta
+        demand
+      }
+    }
+  `;
+  
+  try {
+    const response = await fetch(OCTOPUS_GRAPHQL_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Basic ${btoa(apiKey + ':')}`,
+      },
+      body: JSON.stringify({
+        query,
+        variables: {
+          deviceId,
+          start: oneHourAgo.toISOString(),
+          end: now.toISOString(),
+          grouping,
+        },
+      }),
+    });
+    
+    if (!response.ok) {
+      console.error('[Energy API] GraphQL telemetry request failed:', response.status);
+      return null;
+    }
+    
+    const data: SmartMeterTelemetryResponse = await response.json();
+    
+    if (data.errors && data.errors.length > 0) {
+      console.error('[Energy API] GraphQL telemetry errors:', data.errors);
+      return null;
+    }
+    
+    const telemetry = data.data?.smartMeterTelemetry;
+    if (!telemetry || telemetry.length === 0) {
+      console.log('[Energy API] No telemetry data available');
+      return null;
+    }
+    
+    // Return the most recent entry
+    const sortedTelemetry = [...telemetry].sort(
+      (a, b) => new Date(b.readAt).getTime() - new Date(a.readAt).getTime()
+    );
+    
+    const latest = sortedTelemetry[0];
+    console.log('[Energy API] Latest telemetry:', {
+      readAt: latest.readAt,
+      demand: latest.demand,
+      consumptionDelta: latest.consumptionDelta,
+    });
+    
+    return latest;
+  } catch (error) {
+    console.error('[Energy API] Error fetching smart meter telemetry:', error);
+    return null;
+  }
+}
+
 export async function fetchProductDetails(productCode: string): Promise<ProductDetails | null> {
   console.log(`[Energy API] ========== FETCH PRODUCT DETAILS ==========`);
   console.log(`[Energy API] Product code: ${productCode}`);

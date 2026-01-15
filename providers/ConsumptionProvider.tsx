@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useMemo, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { fetchConsumption, fetchEnergyRates, processRates, fetchFlexibleRate, fetchComparisonTariffRates, fetchGasTrackerRates, fetchStandingCharge, fetchAccountData, processAccountData } from '@/services/energyApi';
+import { fetchConsumption, fetchEnergyRates, processRates, fetchFlexibleRate, fetchComparisonTariffRates, fetchGasTrackerRates, fetchStandingCharge, fetchAccountData, processAccountData, fetchMeterDeviceId, fetchSmartMeterTelemetry, MeterDeviceInfo, SmartMeterTelemetryEntry } from '@/services/energyApi';
 import { DailyConsumption, ConsumptionEntry, ProcessedRate, ConsumptionEntryWithRate, ProcessedAccountData, ProcessedTariffAgreement, ComparisonTariffOption } from '@/types/energy';
 import { DEFAULT_GSP_REGION, DEFAULT_PRODUCT_CODE, GAS_TRACKER_PRODUCT } from '@/constants/octopus';
 
@@ -31,6 +31,7 @@ const STORAGE_KEY_GAS_COMPARISON_TARIFF = '@consumption:gas_comparison_tariff';
 const STORAGE_KEY_GAS_CV = '@consumption:gas_cv';
 const STORAGE_KEY_TUTORIAL_COMPLETED = '@tutorial:completed_v2';
 const STORAGE_KEY_SHOW_NET_FLUX = '@consumption:show_net_flux';
+const STORAGE_KEY_METER_DEVICE_ID = '@consumption:meter_device_id';
 
 const FLEXIBLE_TARIFF_CODE = 'VAR-22-11-01';
 const DEFAULT_GAS_CV = 39.0;
@@ -95,6 +96,9 @@ export const [ConsumptionProvider, useConsumption] = createContextHook(() => {
   const [accountError, setAccountError] = useState<string | null>(null);
   const [gasCv, setGasCvState] = useState<number>(DEFAULT_GAS_CV);
   const [showNetFlux, setShowNetFluxState] = useState<boolean>(true);
+  const [meterDeviceInfo, setMeterDeviceInfo] = useState<MeterDeviceInfo | null>(null);
+  const [liveDemand, setLiveDemand] = useState<number | null>(null);
+  const [liveDemandUpdatedAt, setLiveDemandUpdatedAt] = useState<Date | null>(null);
 
   const selectedRegion = accountData?.region || DEFAULT_GSP_REGION;
   const electricityMpan = accountData?.electricity?.mpan || null;
@@ -273,6 +277,25 @@ export const [ConsumptionProvider, useConsumption] = createContextHook(() => {
     gcTime: Infinity,
   });
 
+  useQuery({
+    queryKey: ['stored-meter-device-id'],
+    queryFn: async () => {
+      const stored = await AsyncStorage.getItem(STORAGE_KEY_METER_DEVICE_ID);
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored);
+          setMeterDeviceInfo(parsed);
+          return parsed;
+        } catch {
+          await AsyncStorage.removeItem(STORAGE_KEY_METER_DEVICE_ID);
+        }
+      }
+      return null;
+    },
+    staleTime: Infinity,
+    gcTime: Infinity,
+  });
+
   const saveApiKeyMutation = useMutation({
     mutationFn: async (key: string) => {
       await AsyncStorage.setItem(STORAGE_KEY_API_KEY, key);
@@ -376,6 +399,41 @@ export const [ConsumptionProvider, useConsumption] = createContextHook(() => {
       setShowNetFluxState(show);
       return show;
     },
+  });
+
+  useQuery({
+    queryKey: ['meter-device-id', accountNumber, apiKey],
+    queryFn: async () => {
+      if (!accountNumber || !apiKey) return null;
+      console.log('[ConsumptionProvider] Fetching meter device ID...');
+      const deviceInfo = await fetchMeterDeviceId(accountNumber, apiKey);
+      if (deviceInfo) {
+        await AsyncStorage.setItem(STORAGE_KEY_METER_DEVICE_ID, JSON.stringify(deviceInfo));
+        setMeterDeviceInfo(deviceInfo);
+      }
+      return deviceInfo;
+    },
+    enabled: !!accountNumber && !!apiKey && !meterDeviceInfo,
+    staleTime: 24 * 60 * 60 * 1000,
+    gcTime: 24 * 60 * 60 * 1000,
+  });
+
+  const smartMeterTelemetryQuery = useQuery({
+    queryKey: ['smart-meter-telemetry', meterDeviceInfo?.deviceId, apiKey],
+    queryFn: async (): Promise<SmartMeterTelemetryEntry | null> => {
+      if (!meterDeviceInfo?.deviceId || !apiKey) return null;
+      console.log('[ConsumptionProvider] Fetching smart meter telemetry...');
+      const telemetry = await fetchSmartMeterTelemetry(meterDeviceInfo.deviceId, apiKey, 'FIVE_MINUTES');
+      if (telemetry) {
+        setLiveDemand(telemetry.demand);
+        setLiveDemandUpdatedAt(new Date(telemetry.readAt));
+        console.log('[ConsumptionProvider] Live demand updated:', telemetry.demand, 'kW');
+      }
+      return telemetry;
+    },
+    enabled: !!meterDeviceInfo?.deviceId && !!apiKey && showNetFlux,
+    refetchInterval: 60 * 1000,
+    staleTime: 30 * 1000,
   });
 
   const fetchAndSaveAccountData = useCallback(async (accNumber: string, key: string) => {
@@ -1335,5 +1393,10 @@ export const [ConsumptionProvider, useConsumption] = createContextHook(() => {
     gasComparisonAvailability,
     showNetFlux,
     setShowNetFlux: saveShowNetFluxMutation.mutate,
+    liveDemand,
+    liveDemandUpdatedAt,
+    hasSmartMeter: !!meterDeviceInfo,
+    isLoadingTelemetry: smartMeterTelemetryQuery.isLoading,
+    refetchTelemetry: smartMeterTelemetryQuery.refetch,
   };
 });

@@ -49,7 +49,7 @@ export default function HomeScreen() {
     selectedRegion,
   } = useEnergyRates();
   
-  const { showGas, showNetFlux } = useConsumption();
+  const { showGas, showNetFlux, liveDemand } = useConsumption();
   
   const { comparisonElectricityRate, comparisonGasRate, comparisonElectricityTariffName, comparisonGasTariffName } = useComparisonRate();
   
@@ -563,7 +563,7 @@ export default function HomeScreen() {
                       <NetFluxTicker
                         importRate={currentElectricityRate?.price || null}
                         exportRate={null}
-                        currentLoad={null}
+                        currentLoad={liveDemand}
                         currentGeneration={null}
                         colors={colors}
                         isDark={isDark}
