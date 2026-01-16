@@ -367,8 +367,13 @@ export async function registerBackgroundFetch(): Promise<void> {
     });
     
     console.log('[ForecastCache] Background fetch registered successfully');
-  } catch (error) {
-    console.error('[ForecastCache] Error registering background fetch:', error);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    if (errorMessage.includes('UIBackgroundModes') || errorMessage.includes('Background Fetch has not been configured')) {
+      console.log('[ForecastCache] Background fetch not available in Expo Go - using foreground fetch only');
+    } else {
+      console.log('[ForecastCache] Background fetch registration skipped:', errorMessage);
+    }
   }
 }
 
