@@ -6,7 +6,7 @@ import {
   Animated,
   Pressable,
 } from 'react-native';
-import { TrendingUp, TrendingDown, Zap, Sun, ChevronDown, ChevronUp } from 'lucide-react-native';
+import { Activity, Sun, ChevronDown, ChevronUp } from 'lucide-react-native';
 
 interface NetFluxTickerProps {
   importRate: number | null;
@@ -248,15 +248,10 @@ export function NetFluxTicker({
     <View style={styles.container}>
       <Pressable style={styles.header} onPress={toggleExpanded}>
         <View style={styles.headerLeft}>
-          <Zap size={16} color={fluxColor} />
+          <Activity size={16} color={fluxColor} />
           <Text style={styles.label}>NET FLUX</Text>
           <View style={styles.statsRow}>
             <View style={styles.statItem}>
-              {isEarning ? (
-                <TrendingUp size={14} color={colors.success} />
-              ) : (
-                <TrendingDown size={14} color={colors.error} />
-              )}
               <Text style={[styles.statValue, { color: fluxColor }]}>
                 {formatFlux(netFlux ?? 0)}
               </Text>
