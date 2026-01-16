@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Animated } from 'react-native';
-import { Leaf, Factory, Activity, ChevronDown, ChevronUp } from 'lucide-react-native';
+import { Leaf, Factory, UtilityPole, ChevronDown, ChevronUp } from 'lucide-react-native';
 import { useQuery } from '@tanstack/react-query';
 import { fetchGridStatus } from '@/services/energyApi';
 import { GridStatusData } from '@/types/energy';
@@ -293,7 +293,7 @@ export function GridStatusCard({ colors, isDark }: GridStatusCardProps) {
     <View style={styles.container}>
       <Pressable style={styles.header} onPress={toggleExpanded}>
         <View style={styles.headerLeft}>
-          <Activity size={16} color={colors.text.secondary} />
+          <UtilityPole size={16} color={colors.text.secondary} />
           <Text style={styles.gridLabel}>UK GRID</Text>
           <View style={styles.statsRow}>
             <View style={styles.statItem}>
