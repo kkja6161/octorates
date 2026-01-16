@@ -11,6 +11,7 @@ import { TutorialProvider } from "@/providers/TutorialProvider";
 import { ThemeContext } from "@/providers/ThemeProvider";
 import { AccessibilityContext } from "@/providers/AccessibilityProvider";
 import { EVProvider } from "@/providers/EVProvider";
+import { ForecastProvider } from "@/providers/ForecastProvider";
 import TutorialOverlay from "@/components/TutorialOverlay";
 import Colors from "@/constants/colors";
 
@@ -91,13 +92,15 @@ return (
           <EnergyRatesProvider>
             <GestureHandlerRootView style={{ flex: 1 }}>
               <ConsumptionProvider>
-                <EVProvider>
-                  <NotificationSettingsProvider>
+                <ForecastProvider>
+                  <EVProvider>
+                    <NotificationSettingsProvider>
                     <TutorialProvider>
                       <AppContent />
                     </TutorialProvider>
                   </NotificationSettingsProvider>
-                </EVProvider>
+                  </EVProvider>
+                </ForecastProvider>
               </ConsumptionProvider>
             </GestureHandlerRootView>
           </EnergyRatesProvider>
