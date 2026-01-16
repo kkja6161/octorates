@@ -16,8 +16,7 @@
       "bundleIdentifier": "app.rork.octorates.hfbyc",
       "infoPlist": {
         "UIBackgroundModes": [
-          "fetch",
-          "background-processing"
+          "fetch"
         ]
       }
     },
@@ -53,7 +52,7 @@
           "color": "#ffffff",
           "defaultChannel": "default",
           "sounds": [],
-          "enableBackgroundRemoteNotifications": false
+          "enableBackgroundRemoteNotifications": true
         }
       ]
     ],
