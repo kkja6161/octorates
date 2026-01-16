@@ -53,7 +53,8 @@ interface ComparisonAvailability {
 }
 
 export const ELECTRICITY_COMPARISON_TARIFFS: ComparisonTariffOption[] = [
-  { code: 'VAR-22-11-01', displayName: 'Flexible Octopus', description: 'Variable rate tariff with standard pricing', hasGas: true },
+  { code: 'VAR-24-05-16', displayName: 'Flexible Octopus (May 2024)', description: 'Current variable rate tariff with standard pricing', hasGas: true },
+  { code: 'VAR-22-11-01', displayName: 'Flexible Octopus (Nov 2022)', description: 'Legacy variable rate tariff', hasGas: true },
   { code: 'OE-FIX-12M-25-11-24', displayName: 'Octopus 12M Fixed November 2025', description: '12 month fixed rate tariff', hasGas: true },
   { code: 'PREPAY-VAR-18-09-21', displayName: 'Flexible Octopus Smart Pay as You Go', description: 'Prepay variable rate tariff', hasGas: true },
   { code: 'LOYAL-FIX-12M-25-12-03', displayName: 'Loyal Octopus 12M Fixed December 2025', description: '12 month fixed rate tariff for loyal customers', hasGas: true },
@@ -71,7 +72,8 @@ export const ELECTRICITY_COMPARISON_TARIFFS: ComparisonTariffOption[] = [
 ];
 
 export const GAS_COMPARISON_TARIFFS: ComparisonTariffOption[] = [
-  { code: 'VAR-22-11-01', displayName: 'Flexible Octopus', description: 'Variable rate tariff with standard pricing', hasGas: true },
+  { code: 'VAR-24-05-16', displayName: 'Flexible Octopus (May 2024)', description: 'Current variable rate tariff with standard pricing', hasGas: true },
+  { code: 'VAR-22-11-01', displayName: 'Flexible Octopus (Nov 2022)', description: 'Legacy variable rate tariff', hasGas: true },
   { code: 'OE-FIX-12M-25-11-24', displayName: 'Octopus 12M Fixed November 2025', description: '12 month fixed rate tariff', hasGas: true },
   { code: 'PREPAY-VAR-18-09-21', displayName: 'Flexible Octopus Smart Pay as You Go', description: 'Prepay variable rate tariff', hasGas: true },
   { code: 'LOYAL-FIX-12M-25-12-03', displayName: 'Loyal Octopus 12M Fixed December 2025', description: '12 month fixed rate tariff for loyal customers', hasGas: true },

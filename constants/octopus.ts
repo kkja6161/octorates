@@ -37,6 +37,7 @@ export const GSP_TO_GAS_REGION: Record<string, string> = {
 // Some product codes have different formats in different contexts
 export const PRODUCT_CODE_MAPPING: Record<string, string> = {
   // Standard variable tariffs
+  'VAR-24-05-16': 'VAR-24-05-16',
   'VAR-22-11-01': 'VAR-22-11-01',
   
   // Tracker tariffs (current)
