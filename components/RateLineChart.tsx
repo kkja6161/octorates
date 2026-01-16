@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { View, Dimensions, StyleSheet, Text } from 'react-native';
 import Svg, { Path, Line, Circle, Text as SvgText } from 'react-native-svg';
-import { ProcessedRate } from '@/types/energy';
+import { ProcessedRate, ProcessedForecastRate } from '@/types/energy';
 
 interface RateLineChartProps {
   rates: ProcessedRate[];
@@ -9,9 +9,10 @@ interface RateLineChartProps {
   colors: any;
   getRateColor: (price: number, type: 'electricity' | 'gas') => string;
   allFutureRates?: ProcessedRate[];
+  forecastRates?: ProcessedForecastRate[];
 }
 
-export const RateLineChart = React.memo(function RateLineChart({ rates, type, colors, getRateColor, allFutureRates }: RateLineChartProps) {
+export const RateLineChart = React.memo(function RateLineChart({ rates, type, colors, getRateColor, allFutureRates, forecastRates }: RateLineChartProps) {
   const chartWidth = Dimensions.get('window').width - 72;
   const chartHeight = 200;
   const padding = { top: 20, bottom: 40, left: 40, right: 10 };
@@ -90,6 +91,7 @@ export const RateLineChart = React.memo(function RateLineChart({ rates, type, co
     return { 
       pathSegments, 
       minRate, 
+      maxRate: minRate + range,
       range, 
       currentRateIndex, 
       nextRateIndex,
@@ -99,6 +101,53 @@ export const RateLineChart = React.memo(function RateLineChart({ rates, type, co
       getY 
     };
   }, [rates, colors, type, getRateColor, allFutureRates, graphHeight, graphWidth, padding.left, padding.top]);
+
+  const forecastPath = useMemo(() => {
+    if (!forecastRates || forecastRates.length === 0 || !chartData) return null;
+    
+    const { minRate: chartMin, maxRate: chartMax } = chartData;
+    const chartRange = chartMax - chartMin || 1;
+    
+    const getYForForecast = (price: number) => 
+      padding.top + graphHeight - ((price - chartMin) / chartRange) * graphHeight;
+    
+    const sortedForecast = [...forecastRates].sort(
+      (a, b) => a.validFrom.getTime() - b.validFrom.getTime()
+    );
+    
+    const matchedPoints: { x: number; y: number }[] = [];
+    
+    sortedForecast.forEach(forecast => {
+      const forecastTime = forecast.validFrom.getTime();
+      
+      let closestIdx = -1;
+      let closestDiff = Infinity;
+      
+      rates.forEach((rate, idx) => {
+        const rateTime = rate.validFrom.getTime();
+        const diff = Math.abs(rateTime - forecastTime);
+        if (diff < closestDiff && diff < 30 * 60 * 1000) {
+          closestDiff = diff;
+          closestIdx = idx;
+        }
+      });
+      
+      if (closestIdx >= 0) {
+        const x = padding.left + (closestIdx / Math.max(rates.length - 1, 1)) * graphWidth;
+        const y = getYForForecast(forecast.price);
+        matchedPoints.push({ x, y });
+      }
+    });
+    
+    if (matchedPoints.length < 2) return null;
+    
+    let pathD = `M ${matchedPoints[0].x} ${matchedPoints[0].y}`;
+    for (let i = 1; i < matchedPoints.length; i++) {
+      pathD += ` L ${matchedPoints[i].x} ${matchedPoints[i].y}`;
+    }
+    
+    return pathD;
+  }, [forecastRates, chartData, rates, padding.left, padding.top, graphHeight, graphWidth]);
 
   if (!chartData) return null;
 
@@ -146,6 +195,19 @@ export const RateLineChart = React.memo(function RateLineChart({ rates, type, co
             strokeLinejoin="round"
           />
         ))}
+
+        {forecastPath && (
+          <Path
+            d={forecastPath}
+            stroke="#9CA3AF"
+            strokeWidth="2"
+            fill="none"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeDasharray="6,4"
+            opacity={0.8}
+          />
+        )}
 
         {currentRateIndex >= 0 && (
           <Circle

@@ -13,13 +13,15 @@ import {
 import { Stack, router, Link } from 'expo-router';
 import { Zap, Flame, Settings } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useQuery } from '@tanstack/react-query';
 
 import { useEnergyRates } from '@/providers/EnergyRatesProvider';
 import { useConsumption } from '@/providers/ConsumptionProvider';
 import { useComparisonRate } from '@/hooks/useComparisonRate';
 import { useAccessibleColors } from '@/hooks/useAccessibleStyles';
 import { useAccessibility } from '@/providers/AccessibilityProvider';
-import { ProcessedRate } from '@/types/energy';
+import { ProcessedRate, ProcessedForecastRate } from '@/types/energy';
+import { fetchAgilePrediction } from '@/services/energyApi';
 import { getRateThresholdLevel, getThresholdColor } from '@/utils/thresholds';
 import { getTariffDisplayName } from '@/utils/tariffNames';
 import { useTheme } from '@/providers/ThemeProvider';
@@ -82,6 +84,38 @@ export default function HomeScreen() {
   const isAgileTariff = (productCode: string) => {
     return productCode && productCode.toUpperCase().includes('AGILE');
   };
+
+  const isAgile = selectedElectricityTariff && isAgileTariff(selectedElectricityTariff);
+
+  const { data: forecastRates } = useQuery({
+    queryKey: ['agile-prediction-overlay', selectedRegion],
+    queryFn: () => fetchAgilePrediction(selectedRegion, 7),
+    staleTime: 30 * 60 * 1000,
+    gcTime: 60 * 60 * 1000,
+    enabled: !!isAgile,
+  });
+
+  const { todayForecast, tomorrowForecast } = useMemo(() => {
+    if (!forecastRates || forecastRates.length === 0) {
+      return { todayForecast: [], tomorrowForecast: [] };
+    }
+
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const todayEnd = new Date(todayStart);
+    todayEnd.setDate(todayEnd.getDate() + 1);
+    const tomorrowEnd = new Date(todayEnd);
+    tomorrowEnd.setDate(tomorrowEnd.getDate() + 1);
+
+    const todayFiltered = forecastRates.filter(rate => 
+      rate.validFrom >= todayStart && rate.validFrom < todayEnd
+    );
+    const tomorrowFiltered = forecastRates.filter(rate => 
+      rate.validFrom >= todayEnd && rate.validFrom < tomorrowEnd
+    );
+
+    return { todayForecast: todayFiltered, tomorrowForecast: tomorrowFiltered };
+  }, [forecastRates]);
 
   // Memoized calculations to prevent stutter
   const electricityCheaperPeriods = useMemo(() => {
@@ -485,7 +519,7 @@ export default function HomeScreen() {
             const isDailyRate = !isElectricity || 
               (todayRates.length > 0 && todayRates.length <= 4) || 
               (todayRates.length > 0 && allRatesSamePrice(todayRates));
-            const isAgile = isElectricity && selectedElectricityTariff && isAgileTariff(selectedElectricityTariff);
+            const isAgileExpanded = isElectricity && selectedElectricityTariff && isAgileTariff(selectedElectricityTariff);
 
             return todayRates.length > 0 ? (
               <>
@@ -514,6 +548,7 @@ export default function HomeScreen() {
                         colors={colors}
                         getRateColor={getRateColor}
                         allFutureRates={tomorrowRates}
+                        forecastRates={isAgileExpanded ? todayForecast : undefined}
                       />
                     </Pressable>
 
@@ -525,9 +560,10 @@ export default function HomeScreen() {
                           type={expandedFuelType} 
                           colors={colors}
                           getRateColor={getRateColor}
+                          forecastRates={isAgileExpanded ? tomorrowForecast : undefined}
                         />
                         
-                        {isAgile && electricityCheaperPeriods.length > 0 && tomorrowGasRates.length > 0 && (
+                        {isAgileExpanded && electricityCheaperPeriods.length > 0 && tomorrowGasRates.length > 0 && (
                           <View style={[styles.cheaperThanGasCard, { borderTopColor: colors.border }]}>
                             <Text style={[styles.cheaperThanGasTitle, { color: colors.text.primary }]}>Cheaper Than Gas ({formatPrice(tomorrowGasRates[0].price)})</Text>
                             {electricityCheaperPeriods.map((period, idx) => (
@@ -570,7 +606,7 @@ export default function HomeScreen() {
                   </View>
                 )}
 
-                {isAgile && (
+                {isAgileExpanded && (
                   <>
                     <AgileForecastCard
                       region={selectedRegion}
