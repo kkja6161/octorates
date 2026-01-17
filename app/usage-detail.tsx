@@ -1,14 +1,16 @@
-import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Dimensions } from 'react-native';
+import React, { useMemo, useEffect, useState, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, Pressable, Dimensions, ActivityIndicator } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ChevronLeft, Zap, PoundSterling } from 'lucide-react-native';
+import { ChevronLeft, Zap, PoundSterling, RefreshCw } from 'lucide-react-native';
 import Svg, { Path, Line, Circle, Text as SvgText } from 'react-native-svg';
 
 import { useTheme } from '@/providers/ThemeProvider';
 import { useConsumption } from '@/providers/ConsumptionProvider';
+import { useEnergyRates } from '@/providers/EnergyRatesProvider';
 import { LIGHT_THEME, DARK_THEME } from '@/constants/colors';
-import { ConsumptionEntryWithRate } from '@/types/energy';
+import { SmartMeterTelemetryEntry } from '@/services/energyApi';
+import { ProcessedRate } from '@/types/energy';
 
 interface HalfHourlyDataPoint {
   time: string;
@@ -23,14 +25,90 @@ export default function UsageDetailScreen() {
   const router = useRouter();
   const { isDark } = useTheme();
   const colors = isDark ? DARK_THEME : LIGHT_THEME;
-  const { electricityDailyConsumption } = useConsumption();
+  const { 
+    fetchTelemetryHistory, 
+    isFetchingTelemetryHistory, 
+    hasSmartMeter,
+    electricityDailyConsumption 
+  } = useConsumption();
+  const { currentElectricityRate, allElectricityRates } = useEnergyRates();
+  
+  const [telemetryData, setTelemetryData] = useState<SmartMeterTelemetryEntry[]>([]);
+  const [hasLoaded, setHasLoaded] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadTelemetryData = useCallback(async () => {
+    console.log('[UsageDetail] Loading telemetry history...');
+    setError(null);
+    try {
+      const data = await fetchTelemetryHistory();
+      console.log('[UsageDetail] Telemetry data received:', data.length, 'entries');
+      setTelemetryData(data);
+      setHasLoaded(true);
+    } catch (err) {
+      console.error('[UsageDetail] Error fetching telemetry:', err);
+      setError('Failed to load telemetry data');
+      setHasLoaded(true);
+    }
+  }, [fetchTelemetryHistory]);
+
+  useEffect(() => {
+    if (hasSmartMeter && !hasLoaded) {
+      loadTelemetryData();
+    } else if (!hasSmartMeter) {
+      setHasLoaded(true);
+    }
+  }, [hasSmartMeter, hasLoaded, loadTelemetryData]);
+
+  const findRateForTime = useCallback((timestamp: Date): number | null => {
+    if (!allElectricityRates || allElectricityRates.length === 0) {
+      return currentElectricityRate?.price ?? null;
+    }
+    
+    const rate = allElectricityRates.find((r: ProcessedRate) => 
+      r.validFrom <= timestamp && r.validTo > timestamp
+    );
+    
+    if (rate) return rate.price;
+    
+    if (currentElectricityRate) return currentElectricityRate.price;
+    
+    return null;
+  }, [allElectricityRates, currentElectricityRate]);
 
   const last48HoursData = useMemo((): HalfHourlyDataPoint[] => {
+    if (telemetryData.length > 0) {
+      console.log('[UsageDetail] Processing telemetry data:', telemetryData.length, 'entries');
+      
+      return telemetryData.map(entry => {
+        const intervalStart = new Date(entry.readAt);
+        const consumptionKwh = entry.consumptionDelta;
+        const rate = findRateForTime(intervalStart);
+        const cost = rate !== null ? consumptionKwh * (rate / 100) : 0;
+        
+        return {
+          time: intervalStart.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+          fullTime: intervalStart.toLocaleString('en-GB', { 
+            day: '2-digit', 
+            month: 'short', 
+            hour: '2-digit', 
+            minute: '2-digit' 
+          }),
+          consumption: consumptionKwh,
+          cost,
+          rate,
+          intervalStart,
+        };
+      });
+    }
+    
     if (!electricityDailyConsumption || electricityDailyConsumption.length === 0) {
       return [];
     }
 
-    const allEntries: ConsumptionEntryWithRate[] = [];
+    console.log('[UsageDetail] Falling back to daily consumption data');
+    
+    const allEntries: { interval_start: string; consumption: number; cost: number; rate: number | null }[] = [];
     electricityDailyConsumption.forEach(day => {
       if (day.entries) {
         allEntries.push(...day.entries);
@@ -50,7 +128,6 @@ export default function UsageDetailScreen() {
     });
 
     const last96 = filtered.slice(0, 96);
-
     last96.reverse();
 
     return last96.map(entry => {
@@ -69,7 +146,7 @@ export default function UsageDetailScreen() {
         intervalStart,
       };
     });
-  }, [electricityDailyConsumption]);
+  }, [telemetryData, electricityDailyConsumption, findRateForTime]);
 
   const chartWidth = Dimensions.get('window').width - 48;
   const chartHeight = 280;
@@ -176,9 +253,41 @@ export default function UsageDetailScreen() {
       fontSize: 18,
       fontWeight: '700' as const,
       color: colors.text.primary,
+      flex: 1,
+    },
+    refreshButton: {
+      padding: 8,
     },
     content: {
       flex: 1,
+    },
+    loadingContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: 40,
+    },
+    loadingText: {
+      fontSize: 14,
+      color: colors.text.secondary,
+      marginTop: 12,
+    },
+    dataSourceBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      alignSelf: 'center',
+      backgroundColor: isDark ? 'rgba(59, 130, 246, 0.15)' : 'rgba(59, 130, 246, 0.1)',
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 16,
+      marginTop: 12,
+      marginBottom: 4,
+      gap: 6,
+    },
+    dataSourceText: {
+      fontSize: 12,
+      fontWeight: '500' as const,
+      color: colors.primary,
     },
     summarySection: {
       padding: 16,
@@ -358,6 +467,8 @@ export default function UsageDetailScreen() {
     return labels.slice(0, 5);
   }, [last48HoursData]);
 
+  const isUsingTelemetry = telemetryData.length > 0;
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <Stack.Screen options={{ headerShown: false }} />
@@ -367,9 +478,30 @@ export default function UsageDetailScreen() {
           <ChevronLeft size={24} color={colors.text.primary} />
         </Pressable>
         <Text style={styles.headerTitle}>48 Hour Usage</Text>
+        {hasSmartMeter && (
+          <Pressable 
+            style={styles.refreshButton} 
+            onPress={loadTelemetryData}
+            disabled={isFetchingTelemetryHistory}
+          >
+            <RefreshCw 
+              size={20} 
+              color={isFetchingTelemetryHistory ? colors.text.secondary : colors.primary} 
+            />
+          </Pressable>
+        )}
       </View>
 
-      {last48HoursData.length === 0 ? (
+      {!hasLoaded || isFetchingTelemetryHistory ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Loading telemetry data...</Text>
+        </View>
+      ) : error ? (
+        <View style={styles.noDataContainer}>
+          <Text style={styles.noDataText}>{error}</Text>
+        </View>
+      ) : last48HoursData.length === 0 ? (
         <View style={styles.noDataContainer}>
           <Text style={styles.noDataText}>
             No consumption data available for the last 48 hours.
@@ -379,6 +511,13 @@ export default function UsageDetailScreen() {
         </View>
       ) : (
         <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+          {isUsingTelemetry && (
+            <View style={styles.dataSourceBadge}>
+              <Zap size={14} color={colors.primary} />
+              <Text style={styles.dataSourceText}>Live Smart Meter Telemetry</Text>
+            </View>
+          )}
+
           <View style={styles.summarySection}>
             <View style={styles.summaryRow}>
               <View style={styles.summaryCard}>

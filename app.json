@@ -16,7 +16,8 @@
       "bundleIdentifier": "app.rork.octorates.hfbyc",
       "infoPlist": {
         "UIBackgroundModes": [
-          "fetch"
+          "fetch",
+          "background-processing"
         ]
       }
     },

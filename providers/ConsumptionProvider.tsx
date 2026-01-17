@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useMemo, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { fetchConsumption, fetchEnergyRates, processRates, fetchFlexibleRate, fetchComparisonTariffRates, fetchGasTrackerRates, fetchStandingCharge, fetchAccountData, processAccountData, fetchMeterDeviceId, fetchSmartMeterTelemetry, MeterDeviceInfo, SmartMeterTelemetryEntry } from '@/services/energyApi';
+import { fetchConsumption, fetchEnergyRates, processRates, fetchFlexibleRate, fetchComparisonTariffRates, fetchGasTrackerRates, fetchStandingCharge, fetchAccountData, processAccountData, fetchMeterDeviceId, fetchSmartMeterTelemetry, fetchSmartMeterTelemetryHistory, MeterDeviceInfo, SmartMeterTelemetryEntry } from '@/services/energyApi';
 import { DailyConsumption, ConsumptionEntry, ProcessedRate, ConsumptionEntryWithRate, ProcessedAccountData, ProcessedTariffAgreement, ComparisonTariffOption } from '@/types/energy';
 import { DEFAULT_GSP_REGION, DEFAULT_PRODUCT_CODE, GAS_TRACKER_PRODUCT } from '@/constants/octopus';
 
@@ -436,6 +436,19 @@ export const [ConsumptionProvider, useConsumption] = createContextHook(() => {
     enabled: !!meterDeviceInfo?.deviceId && !!apiKey && showNetFlux,
     refetchInterval: 60 * 1000,
     staleTime: 30 * 1000,
+  });
+
+  const fetchTelemetryHistoryMutation = useMutation({
+    mutationFn: async (): Promise<SmartMeterTelemetryEntry[]> => {
+      if (!meterDeviceInfo?.deviceId || !apiKey) {
+        console.log('[ConsumptionProvider] Cannot fetch telemetry history: missing device ID or API key');
+        return [];
+      }
+      console.log('[ConsumptionProvider] Fetching 48h telemetry history...');
+      const history = await fetchSmartMeterTelemetryHistory(meterDeviceInfo.deviceId, apiKey, 48);
+      console.log('[ConsumptionProvider] Telemetry history fetched:', history.length, 'entries');
+      return history;
+    },
   });
 
   const fetchAndSaveAccountData = useCallback(async (accNumber: string, key: string) => {
@@ -1400,5 +1413,8 @@ export const [ConsumptionProvider, useConsumption] = createContextHook(() => {
     hasSmartMeter: !!meterDeviceInfo,
     isLoadingTelemetry: smartMeterTelemetryQuery.isLoading,
     refetchTelemetry: smartMeterTelemetryQuery.refetch,
+    fetchTelemetryHistory: fetchTelemetryHistoryMutation.mutateAsync,
+    isFetchingTelemetryHistory: fetchTelemetryHistoryMutation.isPending,
+    meterDeviceId: meterDeviceInfo?.deviceId || null,
   };
 });

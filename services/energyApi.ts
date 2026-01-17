@@ -1416,6 +1416,92 @@ export async function fetchSmartMeterTelemetry(
   }
 }
 
+export async function fetchSmartMeterTelemetryHistory(
+  deviceId: string,
+  apiKey: string,
+  hoursBack: number = 48
+): Promise<SmartMeterTelemetryEntry[]> {
+  console.log('[Energy API] ========== FETCH SMART METER TELEMETRY HISTORY ==========');
+  console.log('[Energy API] Device ID:', deviceId);
+  console.log('[Energy API] Hours back:', hoursBack);
+  
+  const krakenToken = await obtainKrakenToken(apiKey);
+  if (!krakenToken) {
+    console.error('[Energy API] Could not obtain Kraken token for telemetry history query');
+    return [];
+  }
+  
+  const now = new Date();
+  const startTime = new Date(now.getTime() - hoursBack * 60 * 60 * 1000);
+  
+  const query = `
+    query GetSmartMeterTelemetry($deviceId: String!, $start: DateTime!, $end: DateTime!, $grouping: TelemetryGrouping!) {
+      smartMeterTelemetry(
+        deviceId: $deviceId
+        grouping: $grouping
+        start: $start
+        end: $end
+      ) {
+        readAt
+        consumptionDelta
+        demand
+      }
+    }
+  `;
+  
+  try {
+    const response = await fetch(OCTOPUS_GRAPHQL_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': krakenToken,
+      },
+      body: JSON.stringify({
+        query,
+        variables: {
+          deviceId,
+          start: startTime.toISOString(),
+          end: now.toISOString(),
+          grouping: 'HALF_HOURLY',
+        },
+      }),
+    });
+    
+    if (!response.ok) {
+      console.error('[Energy API] GraphQL telemetry history request failed:', response.status);
+      return [];
+    }
+    
+    const data: SmartMeterTelemetryResponse = await response.json();
+    
+    if (data.errors && data.errors.length > 0) {
+      console.error('[Energy API] GraphQL telemetry history errors:', data.errors);
+      return [];
+    }
+    
+    const telemetry = data.data?.smartMeterTelemetry;
+    if (!telemetry || telemetry.length === 0) {
+      console.log('[Energy API] No telemetry history data available');
+      return [];
+    }
+    
+    const sortedTelemetry = [...telemetry].sort(
+      (a, b) => new Date(a.readAt).getTime() - new Date(b.readAt).getTime()
+    );
+    
+    console.log('[Energy API] Telemetry history entries:', sortedTelemetry.length);
+    if (sortedTelemetry.length > 0) {
+      console.log('[Energy API] First entry:', sortedTelemetry[0].readAt);
+      console.log('[Energy API] Last entry:', sortedTelemetry[sortedTelemetry.length - 1].readAt);
+    }
+    
+    return sortedTelemetry;
+  } catch (error) {
+    console.error('[Energy API] Error fetching smart meter telemetry history:', error);
+    return [];
+  }
+}
+
 export async function fetchProductDetails(productCode: string): Promise<ProductDetails | null> {
   console.log(`[Energy API] ========== FETCH PRODUCT DETAILS ==========`);
   console.log(`[Energy API] Product code: ${productCode}`);
