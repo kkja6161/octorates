@@ -76,11 +76,21 @@ export default function UsageDetailScreen() {
     return null;
   }, [allElectricityRates, currentElectricityRate]);
 
-  const last48HoursData = useMemo((): HalfHourlyDataPoint[] => {
+  const todaysData = useMemo((): HalfHourlyDataPoint[] => {
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    
     if (telemetryData.length > 0) {
       console.log('[UsageDetail] Processing telemetry data:', telemetryData.length, 'entries');
       
-      return telemetryData.map(entry => {
+      const todayEntries = telemetryData.filter(entry => {
+        const entryTime = new Date(entry.readAt);
+        return entryTime >= startOfToday;
+      });
+      
+      console.log('[UsageDetail] Today entries:', todayEntries.length);
+      
+      return todayEntries.map(entry => {
         const intervalStart = new Date(entry.readAt);
         const consumptionKwh = typeof entry.consumptionDelta === 'number' ? entry.consumptionDelta : 0;
         const rate = findRateForTime(intervalStart);
@@ -115,22 +125,16 @@ export default function UsageDetailScreen() {
       }
     });
 
-    allEntries.sort((a, b) => 
-      new Date(b.interval_start).getTime() - new Date(a.interval_start).getTime()
-    );
-
-    const now = new Date();
-    const cutoff = new Date(now.getTime() - 48 * 60 * 60 * 1000);
-
     const filtered = allEntries.filter(entry => {
       const entryTime = new Date(entry.interval_start);
-      return entryTime >= cutoff;
+      return entryTime >= startOfToday;
     });
 
-    const last96 = filtered.slice(0, 96);
-    last96.reverse();
+    filtered.sort((a, b) => 
+      new Date(a.interval_start).getTime() - new Date(b.interval_start).getTime()
+    );
 
-    return last96.map(entry => {
+    return filtered.map(entry => {
       const intervalStart = new Date(entry.interval_start);
       return {
         time: intervalStart.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
@@ -158,10 +162,10 @@ export default function UsageDetailScreen() {
   const graphHeight = chartHeight - paddingTop - paddingBottom;
 
   const chartData = useMemo(() => {
-    if (last48HoursData.length === 0) return null;
+    if (todaysData.length === 0) return null;
 
-    const consumptions = last48HoursData.map(d => d.consumption);
-    const costs = last48HoursData.map(d => d.cost);
+    const consumptions = todaysData.map(d => d.consumption);
+    const costs = todaysData.map(d => d.cost);
 
     const minConsumption = Math.min(...consumptions);
     const maxConsumption = Math.max(...consumptions);
@@ -172,7 +176,7 @@ export default function UsageDetailScreen() {
     const costRange = maxCost - minCost || 0.01;
 
     const getX = (index: number) => 
-      paddingLeft + (index / Math.max(last48HoursData.length - 1, 1)) * graphWidth;
+      paddingLeft + (index / Math.max(todaysData.length - 1, 1)) * graphWidth;
 
     const getYConsumption = (value: number) => 
       paddingTop + graphHeight - ((value - minConsumption) / consumptionRange) * graphHeight;
@@ -183,7 +187,7 @@ export default function UsageDetailScreen() {
     let consumptionPath = '';
     let costPath = '';
 
-    last48HoursData.forEach((point, index) => {
+    todaysData.forEach((point, index) => {
       const x = getX(index);
       const yConsumption = getYConsumption(point.consumption);
       const yCost = getYCost(point.cost);
@@ -210,23 +214,23 @@ export default function UsageDetailScreen() {
       getYConsumption,
       getYCost,
     };
-  }, [last48HoursData, graphWidth, graphHeight, paddingLeft, paddingTop]);
+  }, [todaysData, graphWidth, graphHeight, paddingLeft, paddingTop]);
 
   const totalConsumption = useMemo(() => {
-    const total = last48HoursData.reduce((sum, d) => sum + (d.consumption || 0), 0);
+    const total = todaysData.reduce((sum, d) => sum + (d.consumption || 0), 0);
     return typeof total === 'number' && !isNaN(total) ? total : 0;
-  }, [last48HoursData]);
+  }, [todaysData]);
 
   const totalCost = useMemo(() => {
-    const total = last48HoursData.reduce((sum, d) => sum + (d.cost || 0), 0);
+    const total = todaysData.reduce((sum, d) => sum + (d.cost || 0), 0);
     return typeof total === 'number' && !isNaN(total) ? total : 0;
-  }, [last48HoursData]);
+  }, [todaysData]);
 
   const avgRate = useMemo(() => {
-    const ratesWithValues = last48HoursData.filter(d => d.rate !== null);
+    const ratesWithValues = todaysData.filter(d => d.rate !== null);
     if (ratesWithValues.length === 0) return null;
     return ratesWithValues.reduce((sum, d) => sum + (d.rate || 0), 0) / ratesWithValues.length;
-  }, [last48HoursData]);
+  }, [todaysData]);
 
   const consumptionColor = '#3B82F6';
   const costColor = '#F59E0B';
@@ -449,23 +453,21 @@ export default function UsageDetailScreen() {
   };
 
   const xAxisLabels = useMemo(() => {
-    if (last48HoursData.length === 0) return [];
+    if (todaysData.length === 0) return [];
     const labels: string[] = [];
-    const step = Math.floor(last48HoursData.length / 4);
-    for (let i = 0; i < last48HoursData.length; i += step) {
-      if (last48HoursData[i]) {
-        const date = last48HoursData[i].intervalStart;
-        labels.push(date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) + 
-          '\n' + date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }));
+    const step = Math.max(1, Math.floor(todaysData.length / 4));
+    for (let i = 0; i < todaysData.length; i += step) {
+      if (todaysData[i]) {
+        const date = todaysData[i].intervalStart;
+        labels.push(date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }));
       }
     }
-    if (last48HoursData.length > 0) {
-      const lastDate = last48HoursData[last48HoursData.length - 1].intervalStart;
-      labels.push(lastDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) + 
-        '\n' + lastDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }));
+    if (todaysData.length > 0 && labels.length < 5) {
+      const lastDate = todaysData[todaysData.length - 1].intervalStart;
+      labels.push(lastDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }));
     }
     return labels.slice(0, 5);
-  }, [last48HoursData]);
+  }, [todaysData]);
 
   const isUsingTelemetry = telemetryData.length > 0;
 
@@ -477,7 +479,7 @@ export default function UsageDetailScreen() {
         <Pressable style={styles.backButton} onPress={() => router.back()}>
           <ChevronLeft size={24} color={colors.text.primary} />
         </Pressable>
-        <Text style={styles.headerTitle}>48 Hour Usage</Text>
+        <Text style={styles.headerTitle}>Today&apos;s Usage</Text>
         {hasSmartMeter && (
           <Pressable 
             style={styles.refreshButton} 
@@ -501,10 +503,10 @@ export default function UsageDetailScreen() {
         <View style={styles.noDataContainer}>
           <Text style={styles.noDataText}>{error}</Text>
         </View>
-      ) : last48HoursData.length === 0 ? (
+      ) : todaysData.length === 0 ? (
         <View style={styles.noDataContainer}>
           <Text style={styles.noDataText}>
-            No consumption data available for the last 48 hours.
+            No consumption data available for today yet.
             {'\n\n'}
             Connect your smart meter to view real-time usage.
           </Text>
@@ -538,7 +540,7 @@ export default function UsageDetailScreen() {
               <View style={styles.summaryCard}>
                 <Text style={styles.summaryLabel}>Data Points</Text>
                 <Text style={styles.summaryValue}>
-                  {last48HoursData.length}
+                  {todaysData.length}
                   <Text style={styles.summaryUnit}> periods</Text>
                 </Text>
               </View>
@@ -640,19 +642,19 @@ export default function UsageDetailScreen() {
                       strokeLinejoin="round"
                     />
 
-                    {last48HoursData.length > 0 && (
+                    {todaysData.length > 0 && (
                       <>
                         <Circle
-                          cx={chartData.getX(last48HoursData.length - 1)}
-                          cy={chartData.getYConsumption(last48HoursData[last48HoursData.length - 1].consumption)}
+                          cx={chartData.getX(todaysData.length - 1)}
+                          cy={chartData.getYConsumption(todaysData[todaysData.length - 1].consumption)}
                           r="5"
                           fill={consumptionColor}
                           stroke={colors.surface}
                           strokeWidth="2"
                         />
                         <Circle
-                          cx={chartData.getX(last48HoursData.length - 1)}
-                          cy={chartData.getYCost(last48HoursData[last48HoursData.length - 1].cost)}
+                          cx={chartData.getX(todaysData.length - 1)}
+                          cy={chartData.getYCost(todaysData[todaysData.length - 1].cost)}
                           r="5"
                           fill={costColor}
                           stroke={colors.surface}
@@ -682,7 +684,7 @@ export default function UsageDetailScreen() {
                 <Text style={[styles.dataConsumption, styles.dataHeaderText, { color: colors.text.secondary }]}>Usage</Text>
                 <Text style={[styles.dataCost, styles.dataHeaderText, { color: colors.text.secondary }]}>Cost</Text>
               </View>
-              {[...last48HoursData].reverse().slice(0, 20).map((point, index, arr) => (
+              {[...todaysData].reverse().slice(0, 20).map((point, index, arr) => (
                 <View 
                   key={index} 
                   style={[
