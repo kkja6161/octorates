@@ -9,8 +9,8 @@ import { useTheme } from '@/providers/ThemeProvider';
 import { useConsumption } from '@/providers/ConsumptionProvider';
 import { useEnergyRates } from '@/providers/EnergyRatesProvider';
 import { LIGHT_THEME, DARK_THEME } from '@/constants/colors';
-import { SmartMeterTelemetryEntry } from '@/services/energyApi';
-import { ProcessedRate } from '@/types/energy';
+import { fetchConsumption } from '@/services/energyApi';
+import { ProcessedRate, ConsumptionEntry } from '@/types/energy';
 
 interface HalfHourlyDataPoint {
   time: string;
@@ -26,39 +26,87 @@ export default function UsageDetailScreen() {
   const { isDark } = useTheme();
   const colors = isDark ? DARK_THEME : LIGHT_THEME;
   const { 
-    fetchTelemetryHistory, 
-    isFetchingTelemetryHistory, 
-    hasSmartMeter,
     electricityDailyConsumption 
   } = useConsumption();
   const { currentElectricityRate, allElectricityRates } = useEnergyRates();
   
-  const [telemetryData, setTelemetryData] = useState<SmartMeterTelemetryEntry[]>([]);
+  const [consumptionData, setConsumptionData] = useState<ConsumptionEntry[]>([]);
   const [hasLoaded, setHasLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const loadTelemetryData = useCallback(async () => {
-    console.log('[UsageDetail] Loading telemetry history...');
+  const { apiKey, electricityMpan, electricitySerialNumbers } = useConsumption();
+
+  const loadConsumptionData = useCallback(async () => {
+    if (!apiKey || !electricityMpan || electricitySerialNumbers.length === 0) {
+      console.log('[UsageDetail] Missing credentials for consumption fetch');
+      setHasLoaded(true);
+      return;
+    }
+
+    console.log('[UsageDetail] Loading 48h consumption data...');
     setError(null);
+    setIsLoading(true);
+
     try {
-      const data = await fetchTelemetryHistory();
-      console.log('[UsageDetail] Telemetry data received:', data.length, 'entries');
-      setTelemetryData(data);
+      // Calculate 48 hours ago
+      const now = new Date();
+      const startTime = new Date(now.getTime() - 48 * 60 * 60 * 1000);
+      
+      console.log('[UsageDetail] Fetching consumption from:', startTime.toISOString(), 'to:', now.toISOString());
+
+      // Try each serial number until we get data
+      let allResults: ConsumptionEntry[] = [];
+      for (const serial of electricitySerialNumbers) {
+        try {
+          const result = await fetchConsumption(
+            electricityMpan,
+            serial,
+            apiKey,
+            'electricity',
+            startTime.toISOString(),
+            now.toISOString()
+          );
+          
+          if (result.results.length > 0) {
+            allResults = result.results;
+            console.log('[UsageDetail] Got', result.results.length, 'consumption entries from serial', serial);
+            break;
+          }
+        } catch {
+          console.log('[UsageDetail] Serial', serial, 'failed, trying next...');
+        }
+      }
+
+      // Sort by time ascending
+      allResults.sort((a, b) => 
+        new Date(a.interval_start).getTime() - new Date(b.interval_start).getTime()
+      );
+
+      console.log('[UsageDetail] Total consumption entries:', allResults.length);
+      if (allResults.length > 0) {
+        console.log('[UsageDetail] First entry:', allResults[0].interval_start);
+        console.log('[UsageDetail] Last entry:', allResults[allResults.length - 1].interval_start);
+      }
+
+      setConsumptionData(allResults);
       setHasLoaded(true);
     } catch (err) {
-      console.error('[UsageDetail] Error fetching telemetry:', err);
-      setError('Failed to load telemetry data');
+      console.error('[UsageDetail] Error fetching consumption:', err);
+      setError('Failed to load consumption data');
       setHasLoaded(true);
+    } finally {
+      setIsLoading(false);
     }
-  }, [fetchTelemetryHistory]);
+  }, [apiKey, electricityMpan, electricitySerialNumbers]);
 
   useEffect(() => {
-    if (hasSmartMeter && !hasLoaded) {
-      loadTelemetryData();
-    } else if (!hasSmartMeter) {
+    if (!hasLoaded && apiKey && electricityMpan) {
+      loadConsumptionData();
+    } else if (!apiKey || !electricityMpan) {
       setHasLoaded(true);
     }
-  }, [hasSmartMeter, hasLoaded, loadTelemetryData]);
+  }, [hasLoaded, apiKey, electricityMpan, loadConsumptionData]);
 
   const findRateForTime = useCallback((timestamp: Date): number | null => {
     if (!allElectricityRates || allElectricityRates.length === 0) {
@@ -77,12 +125,13 @@ export default function UsageDetailScreen() {
   }, [allElectricityRates, currentElectricityRate]);
 
   const last48HoursData = useMemo((): HalfHourlyDataPoint[] => {
-    if (telemetryData.length > 0) {
-      console.log('[UsageDetail] Processing telemetry data:', telemetryData.length, 'entries');
+    // Use directly fetched consumption data (REST API - more reliable for historical data)
+    if (consumptionData.length > 0) {
+      console.log('[UsageDetail] Processing consumption data:', consumptionData.length, 'entries');
       
-      return telemetryData.map(entry => {
-        const intervalStart = new Date(entry.readAt);
-        const consumptionKwh = typeof entry.consumptionDelta === 'number' ? entry.consumptionDelta : 0;
+      return consumptionData.map(entry => {
+        const intervalStart = new Date(entry.interval_start);
+        const consumptionKwh = typeof entry.consumption === 'number' ? entry.consumption : 0;
         const rate = findRateForTime(intervalStart);
         const cost = rate !== null ? consumptionKwh * (rate / 100) : 0;
         
@@ -102,11 +151,13 @@ export default function UsageDetailScreen() {
       });
     }
     
+    // Fallback to daily consumption data from provider if direct fetch failed
     if (!electricityDailyConsumption || electricityDailyConsumption.length === 0) {
+      console.log('[UsageDetail] No consumption data available');
       return [];
     }
 
-    console.log('[UsageDetail] Falling back to daily consumption data');
+    console.log('[UsageDetail] Falling back to daily consumption data from provider');
     
     const allEntries: { interval_start: string; consumption: number; cost: number; rate: number | null }[] = [];
     electricityDailyConsumption.forEach(day => {
@@ -146,7 +197,7 @@ export default function UsageDetailScreen() {
         intervalStart,
       };
     });
-  }, [telemetryData, electricityDailyConsumption, findRateForTime]);
+  }, [consumptionData, electricityDailyConsumption, findRateForTime]);
 
   const chartWidth = Dimensions.get('window').width - 48;
   const chartHeight = 280;
@@ -467,7 +518,7 @@ export default function UsageDetailScreen() {
     return labels.slice(0, 5);
   }, [last48HoursData]);
 
-  const isUsingTelemetry = telemetryData.length > 0;
+  const isUsingDirectFetch = consumptionData.length > 0;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -478,21 +529,19 @@ export default function UsageDetailScreen() {
           <ChevronLeft size={24} color={colors.text.primary} />
         </Pressable>
         <Text style={styles.headerTitle}>48 Hour Usage</Text>
-        {hasSmartMeter && (
-          <Pressable 
-            style={styles.refreshButton} 
-            onPress={loadTelemetryData}
-            disabled={isFetchingTelemetryHistory}
-          >
-            <RefreshCw 
-              size={20} 
-              color={isFetchingTelemetryHistory ? colors.text.secondary : colors.primary} 
-            />
-          </Pressable>
-        )}
+        <Pressable 
+          style={styles.refreshButton} 
+          onPress={loadConsumptionData}
+          disabled={isLoading}
+        >
+          <RefreshCw 
+            size={20} 
+            color={isLoading ? colors.text.secondary : colors.primary} 
+          />
+        </Pressable>
       </View>
 
-      {!hasLoaded || isFetchingTelemetryHistory ? (
+      {!hasLoaded || isLoading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>Loading telemetry data...</Text>
@@ -511,10 +560,10 @@ export default function UsageDetailScreen() {
         </View>
       ) : (
         <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-          {isUsingTelemetry && (
+          {isUsingDirectFetch && (
             <View style={styles.dataSourceBadge}>
               <Zap size={14} color={colors.primary} />
-              <Text style={styles.dataSourceText}>Live Smart Meter Telemetry</Text>
+              <Text style={styles.dataSourceText}>Smart Meter Consumption Data</Text>
             </View>
           )}
 
