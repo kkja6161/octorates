@@ -82,7 +82,7 @@ export default function UsageDetailScreen() {
       
       return telemetryData.map(entry => {
         const intervalStart = new Date(entry.readAt);
-        const consumptionKwh = entry.consumptionDelta;
+        const consumptionKwh = typeof entry.consumptionDelta === 'number' ? entry.consumptionDelta : 0;
         const rate = findRateForTime(intervalStart);
         const cost = rate !== null ? consumptionKwh * (rate / 100) : 0;
         
@@ -140,8 +140,8 @@ export default function UsageDetailScreen() {
           hour: '2-digit', 
           minute: '2-digit' 
         }),
-        consumption: entry.consumption,
-        cost: entry.cost,
+        consumption: typeof entry.consumption === 'number' ? entry.consumption : 0,
+        cost: typeof entry.cost === 'number' ? entry.cost : 0,
         rate: entry.rate,
         intervalStart,
       };
@@ -212,15 +212,15 @@ export default function UsageDetailScreen() {
     };
   }, [last48HoursData, graphWidth, graphHeight, paddingLeft, paddingTop]);
 
-  const totalConsumption = useMemo(() => 
-    last48HoursData.reduce((sum, d) => sum + d.consumption, 0), 
-    [last48HoursData]
-  );
+  const totalConsumption = useMemo(() => {
+    const total = last48HoursData.reduce((sum, d) => sum + (d.consumption || 0), 0);
+    return typeof total === 'number' && !isNaN(total) ? total : 0;
+  }, [last48HoursData]);
 
-  const totalCost = useMemo(() => 
-    last48HoursData.reduce((sum, d) => sum + d.cost, 0), 
-    [last48HoursData]
-  );
+  const totalCost = useMemo(() => {
+    const total = last48HoursData.reduce((sum, d) => sum + (d.cost || 0), 0);
+    return typeof total === 'number' && !isNaN(total) ? total : 0;
+  }, [last48HoursData]);
 
   const avgRate = useMemo(() => {
     const ratesWithValues = last48HoursData.filter(d => d.rate !== null);
