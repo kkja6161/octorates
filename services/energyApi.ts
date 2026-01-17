@@ -1502,6 +1502,65 @@ export async function fetchSmartMeterTelemetryHistory(
   }
 }
 
+// Fetch recent half-hourly consumption from the standard meter API
+// This works for all smart meters (not just those with Home Mini)
+export async function fetchRecentConsumption(
+  mpan: string,
+  serialNumber: string,
+  apiKey: string,
+  hoursBack: number = 24
+): Promise<{ interval_start: string; interval_end: string; consumption: number }[]> {
+  console.log('[Energy API] ========== FETCH RECENT CONSUMPTION ==========');
+  console.log('[Energy API] MPAN:', mpan);
+  console.log('[Energy API] Serial:', serialNumber);
+  console.log('[Energy API] Hours back:', hoursBack);
+  
+  const now = new Date();
+  const startTime = new Date(now.getTime() - hoursBack * 60 * 60 * 1000);
+  
+  const endpoint = `electricity-meter-points/${mpan}/meters/${serialNumber}/consumption`;
+  const baseUrl = `${OCTOPUS_API_BASE}/v1/${endpoint}/`;
+  
+  const params = new URLSearchParams();
+  params.append('page_size', '200');
+  params.append('period_from', startTime.toISOString());
+  params.append('order_by', 'period');
+  
+  const url = `${baseUrl}?${params.toString()}`;
+  
+  console.log('[Energy API] Fetching recent consumption from:', url);
+  
+  try {
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': `Basic ${btoa(apiKey + ':')}`,
+      },
+    });
+    
+    if (!response.ok) {
+      console.error('[Energy API] Recent consumption request failed:', response.status);
+      return [];
+    }
+    
+    const data: ConsumptionResponse = await response.json();
+    
+    console.log('[Energy API] Recent consumption entries:', data.results.length);
+    if (data.results.length > 0) {
+      console.log('[Energy API] First entry:', data.results[0].interval_start);
+      console.log('[Energy API] Last entry:', data.results[data.results.length - 1].interval_start);
+      console.log('[Energy API] Sample consumption values:', data.results.slice(0, 5).map(r => r.consumption));
+    }
+    
+    // Sort by interval_start ascending
+    return data.results.sort(
+      (a, b) => new Date(a.interval_start).getTime() - new Date(b.interval_start).getTime()
+    );
+  } catch (error) {
+    console.error('[Energy API] Error fetching recent consumption:', error);
+    return [];
+  }
+}
+
 export async function fetchProductDetails(productCode: string): Promise<ProductDetails | null> {
   console.log(`[Energy API] ========== FETCH PRODUCT DETAILS ==========`);
   console.log(`[Energy API] Product code: ${productCode}`);
