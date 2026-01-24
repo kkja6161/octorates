@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useMemo, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { fetchConsumption, fetchEnergyRates, processRates, fetchFlexibleRate, fetchComparisonTariffRates, fetchGasTrackerRates, fetchStandingCharge, fetchAccountData, processAccountData, fetchMeterDeviceId, fetchSmartMeterTelemetry, fetchSmartMeterTelemetryHistory, fetchRecentConsumption, MeterDeviceInfo, SmartMeterTelemetryEntry } from '@/services/energyApi';
+import { fetchConsumption, fetchEnergyRates, processRates, fetchFlexibleRate, fetchComparisonTariffRates, fetchGasTrackerRates, fetchStandingCharge, fetchAccountData, processAccountData, fetchMeterDeviceId, fetchSmartMeterTelemetry, fetchSmartMeterTelemetryHistory, fetchTodaySmartMeterTelemetry, fetchRecentConsumption, MeterDeviceInfo, SmartMeterTelemetryEntry } from '@/services/energyApi';
 import { DailyConsumption, ConsumptionEntry, ProcessedRate, ConsumptionEntryWithRate, ProcessedAccountData, ProcessedTariffAgreement, ComparisonTariffOption } from '@/types/energy';
 import { DEFAULT_GSP_REGION, DEFAULT_PRODUCT_CODE, GAS_TRACKER_PRODUCT } from '@/constants/octopus';
 
@@ -444,7 +444,18 @@ export const [ConsumptionProvider, useConsumption] = createContextHook(() => {
         console.log('[ConsumptionProvider] Cannot fetch telemetry history: missing device ID or API key');
         return [];
       }
-      console.log('[ConsumptionProvider] Fetching 48h telemetry history...');
+      console.log('[ConsumptionProvider] Fetching telemetry history...');
+      console.log('[ConsumptionProvider] Device ID:', meterDeviceInfo.deviceId);
+      
+      // First try to get today's data specifically (from midnight)
+      const todayData = await fetchTodaySmartMeterTelemetry(meterDeviceInfo.deviceId, apiKey);
+      if (todayData.length > 0) {
+        console.log('[ConsumptionProvider] Today telemetry fetched:', todayData.length, 'entries');
+        return todayData;
+      }
+      
+      // Fall back to 48h history if today's data is empty
+      console.log('[ConsumptionProvider] No today data, trying 48h history...');
       const history = await fetchSmartMeterTelemetryHistory(meterDeviceInfo.deviceId, apiKey, 48);
       console.log('[ConsumptionProvider] Telemetry history fetched:', history.length, 'entries');
       return history;
