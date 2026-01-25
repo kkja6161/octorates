@@ -6,7 +6,7 @@ import {
   Animated,
   Pressable,
 } from 'react-native';
-import { Activity, Sun, ChevronDown, ChevronUp, ChevronRight } from 'lucide-react-native';
+import { Activity, Sun, ChevronDown, ChevronUp } from 'lucide-react-native';
 
 interface NetFluxTickerProps {
   importRate: number | null;
@@ -23,7 +23,6 @@ interface NetFluxTickerProps {
   };
   isDark: boolean;
   onPress?: () => void;
-  onViewUsage?: () => void;
 }
 
 export function NetFluxTicker({
@@ -34,7 +33,6 @@ export function NetFluxTicker({
   colors,
   isDark,
   onPress,
-  onViewUsage,
 }: NetFluxTickerProps) {
   const [netFlux, setNetFlux] = useState<number | null>(null);
   const [isEarning, setIsEarning] = useState(false);
@@ -242,22 +240,6 @@ export function NetFluxTicker({
       color: colors.text.secondary,
       textAlign: 'center' as const,
     },
-    viewUsageButton: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginTop: 12,
-      paddingVertical: 10,
-      paddingHorizontal: 16,
-      backgroundColor: isDark ? 'rgba(66, 165, 245, 0.15)' : 'rgba(30, 136, 229, 0.1)',
-      borderRadius: 8,
-      gap: 6,
-    },
-    viewUsageText: {
-      fontSize: 14,
-      fontWeight: '600' as const,
-      color: colors.primary,
-    },
   });
 
   const loadKw = (Number(currentLoad) || 0) / 1000;
@@ -357,16 +339,6 @@ export function NetFluxTicker({
                 No export tariff detected. Add solar/battery to see earnings.
               </Text>
             </View>
-          )}
-
-          {onViewUsage && (
-            <Pressable 
-              style={styles.viewUsageButton}
-              onPress={onViewUsage}
-            >
-              <Text style={styles.viewUsageText}>View 48h Usage</Text>
-              <ChevronRight size={16} color={colors.primary} />
-            </Pressable>
           )}
         </View>
       )}

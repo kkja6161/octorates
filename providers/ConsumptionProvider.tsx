@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useMemo, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { fetchConsumption, fetchEnergyRates, processRates, fetchFlexibleRate, fetchComparisonTariffRates, fetchGasTrackerRates, fetchStandingCharge, fetchAccountData, processAccountData, fetchMeterDeviceId, fetchSmartMeterTelemetry, fetchSmartMeterTelemetryHistory, fetchTodaySmartMeterTelemetry, fetchRecentConsumption, MeterDeviceInfo, SmartMeterTelemetryEntry } from '@/services/energyApi';
+import { fetchConsumption, fetchEnergyRates, processRates, fetchFlexibleRate, fetchComparisonTariffRates, fetchGasTrackerRates, fetchStandingCharge, fetchAccountData, processAccountData, fetchMeterDeviceId, fetchSmartMeterTelemetry, MeterDeviceInfo, SmartMeterTelemetryEntry } from '@/services/energyApi';
 import { DailyConsumption, ConsumptionEntry, ProcessedRate, ConsumptionEntryWithRate, ProcessedAccountData, ProcessedTariffAgreement, ComparisonTariffOption } from '@/types/energy';
 import { DEFAULT_GSP_REGION, DEFAULT_PRODUCT_CODE, GAS_TRACKER_PRODUCT } from '@/constants/octopus';
 
@@ -436,51 +436,6 @@ export const [ConsumptionProvider, useConsumption] = createContextHook(() => {
     enabled: !!meterDeviceInfo?.deviceId && !!apiKey && showNetFlux,
     refetchInterval: 60 * 1000,
     staleTime: 30 * 1000,
-  });
-
-  const fetchTelemetryHistoryMutation = useMutation({
-    mutationFn: async (): Promise<SmartMeterTelemetryEntry[]> => {
-      if (!meterDeviceInfo?.deviceId || !apiKey) {
-        console.log('[ConsumptionProvider] Cannot fetch telemetry history: missing device ID or API key');
-        return [];
-      }
-      console.log('[ConsumptionProvider] Fetching telemetry history...');
-      console.log('[ConsumptionProvider] Device ID:', meterDeviceInfo.deviceId);
-      
-      // First try to get today's data specifically (from midnight)
-      const todayData = await fetchTodaySmartMeterTelemetry(meterDeviceInfo.deviceId, apiKey);
-      if (todayData.length > 0) {
-        console.log('[ConsumptionProvider] Today telemetry fetched:', todayData.length, 'entries');
-        return todayData;
-      }
-      
-      // Fall back to 48h history if today's data is empty
-      console.log('[ConsumptionProvider] No today data, trying 48h history...');
-      const history = await fetchSmartMeterTelemetryHistory(meterDeviceInfo.deviceId, apiKey, 48);
-      console.log('[ConsumptionProvider] Telemetry history fetched:', history.length, 'entries');
-      return history;
-    },
-  });
-
-  // Fetch recent consumption from standard API (works for all smart meters)
-  const fetchRecentConsumptionMutation = useMutation({
-    mutationFn: async (hoursBack: number = 48): Promise<{ interval_start: string; interval_end: string; consumption: number }[]> => {
-      if (!electricityMpan || electricitySerialNumbers.length === 0 || !apiKey) {
-        console.log('[ConsumptionProvider] Cannot fetch recent consumption: missing MPAN, serial, or API key');
-        return [];
-      }
-      console.log('[ConsumptionProvider] Fetching recent consumption...', hoursBack, 'hours');
-      // Try each serial number until we get data
-      for (const serial of electricitySerialNumbers) {
-        const data = await fetchRecentConsumption(electricityMpan, serial, apiKey, hoursBack);
-        if (data.length > 0) {
-          console.log('[ConsumptionProvider] Recent consumption fetched:', data.length, 'entries from serial', serial);
-          return data;
-        }
-      }
-      console.log('[ConsumptionProvider] No recent consumption data found');
-      return [];
-    },
   });
 
   const fetchAndSaveAccountData = useCallback(async (accNumber: string, key: string) => {
@@ -1445,10 +1400,5 @@ export const [ConsumptionProvider, useConsumption] = createContextHook(() => {
     hasSmartMeter: !!meterDeviceInfo,
     isLoadingTelemetry: smartMeterTelemetryQuery.isLoading,
     refetchTelemetry: smartMeterTelemetryQuery.refetch,
-    fetchTelemetryHistory: fetchTelemetryHistoryMutation.mutateAsync,
-    isFetchingTelemetryHistory: fetchTelemetryHistoryMutation.isPending,
-    meterDeviceId: meterDeviceInfo?.deviceId || null,
-    fetchRecentConsumption: fetchRecentConsumptionMutation.mutateAsync,
-    isFetchingRecentConsumption: fetchRecentConsumptionMutation.isPending,
   };
 });

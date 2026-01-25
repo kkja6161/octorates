@@ -425,7 +425,6 @@ export default function HomeScreen() {
                 currentGeneration={null}
                 colors={colors}
                 isDark={isDark}
-                onViewUsage={() => router.push('/usage-detail')}
               />
             </>
           )}

@@ -1245,7 +1245,7 @@ export async function fetchMeterDeviceId(
   accountNumber: string,
   apiKey: string
 ): Promise<MeterDeviceInfo | null> {
-  console.log('[Energy API] ========== FETCH METER DEVICE ID (CAD/Home Mini) ==========');
+  console.log('[Energy API] ========== FETCH METER DEVICE ID ==========');
   console.log('[Energy API] Account:', accountNumber);
   
   // First obtain a Kraken token
@@ -1255,8 +1255,6 @@ export async function fetchMeterDeviceId(
     return null;
   }
   
-  // Query for smart devices including CAD (Consumer Access Device / Home Mini)
-  // The Home Mini device is a CAD that connects to the smart meter
   const query = `
     query GetMeterDevices($accountNumber: String!) {
       account(accountNumber: $accountNumber) {
@@ -1266,18 +1264,6 @@ export async function fetchMeterDeviceId(
               serialNumber
               smartDevices {
                 deviceId
-                deviceType
-              }
-            }
-          }
-        }
-        properties {
-          electricityMeterPoints {
-            meters {
-              serialNumber
-              smartDevices {
-                deviceId
-                deviceType
               }
             }
           }
@@ -1304,67 +1290,36 @@ export async function fetchMeterDeviceId(
       return null;
     }
     
-    const data = await response.json();
-    console.log('[Energy API] Full meter device response:', JSON.stringify(data, null, 2));
+    const data: AccountMetersResponse = await response.json();
     
     if (data.errors && data.errors.length > 0) {
       console.error('[Energy API] GraphQL errors:', data.errors);
       return null;
     }
     
-    // First try electricityAgreements path
     const agreements = data.data?.account?.electricityAgreements;
-    if (agreements && agreements.length > 0) {
-      for (const agreement of agreements) {
-        const meters = agreement.meterPoint?.meters;
-        if (meters) {
-          for (const meter of meters) {
-            if (meter.smartDevices && meter.smartDevices.length > 0) {
-              // Look for CAD device type if available, otherwise use first device
-              const cadDevice = meter.smartDevices.find((d: { deviceType?: string }) => 
-                d.deviceType === 'CAD' || d.deviceType === 'CONSUMER_ACCESS_DEVICE'
-              );
-              const device = cadDevice || meter.smartDevices[0];
-              console.log('[Energy API] Found smart device via agreements:', device.deviceId, 'type:', device.deviceType);
-              return {
-                deviceId: device.deviceId,
-                serialNumber: meter.serialNumber,
-              };
-            }
+    if (!agreements || agreements.length === 0) {
+      console.log('[Energy API] No electricity agreements found');
+      return null;
+    }
+    
+    for (const agreement of agreements) {
+      const meters = agreement.meterPoint?.meters;
+      if (meters) {
+        for (const meter of meters) {
+          if (meter.smartDevices && meter.smartDevices.length > 0) {
+            const deviceId = meter.smartDevices[0].deviceId;
+            console.log('[Energy API] Found smart meter device:', deviceId);
+            return {
+              deviceId,
+              serialNumber: meter.serialNumber,
+            };
           }
         }
       }
     }
     
-    // Try properties path as fallback
-    const properties = data.data?.account?.properties;
-    if (properties && properties.length > 0) {
-      for (const property of properties) {
-        const meterPoints = property.electricityMeterPoints;
-        if (meterPoints) {
-          for (const meterPoint of meterPoints) {
-            const meters = meterPoint.meters;
-            if (meters) {
-              for (const meter of meters) {
-                if (meter.smartDevices && meter.smartDevices.length > 0) {
-                  const cadDevice = meter.smartDevices.find((d: { deviceType?: string }) => 
-                    d.deviceType === 'CAD' || d.deviceType === 'CONSUMER_ACCESS_DEVICE'
-                  );
-                  const device = cadDevice || meter.smartDevices[0];
-                  console.log('[Energy API] Found smart device via properties:', device.deviceId, 'type:', device.deviceType);
-                  return {
-                    deviceId: device.deviceId,
-                    serialNumber: meter.serialNumber,
-                  };
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-    
-    console.log('[Energy API] No smart devices (CAD/Home Mini) found on account');
+    console.log('[Energy API] No smart devices found on meters');
     return null;
   } catch (error) {
     console.error('[Energy API] Error fetching meter device ID:', error);
@@ -1458,251 +1413,6 @@ export async function fetchSmartMeterTelemetry(
   } catch (error) {
     console.error('[Energy API] Error fetching smart meter telemetry:', error);
     return null;
-  }
-}
-
-export async function fetchSmartMeterTelemetryHistory(
-  deviceId: string,
-  apiKey: string,
-  hoursBack: number = 48
-): Promise<SmartMeterTelemetryEntry[]> {
-  console.log('[Energy API] ========== FETCH SMART METER TELEMETRY HISTORY ==========');
-  console.log('[Energy API] Device ID:', deviceId);
-  console.log('[Energy API] Hours back:', hoursBack);
-  
-  const krakenToken = await obtainKrakenToken(apiKey);
-  if (!krakenToken) {
-    console.error('[Energy API] Could not obtain Kraken token for telemetry history query');
-    return [];
-  }
-  
-  const now = new Date();
-  const startTime = new Date(now.getTime() - hoursBack * 60 * 60 * 1000);
-  
-  const query = `
-    query GetSmartMeterTelemetry($deviceId: String!, $start: DateTime!, $end: DateTime!, $grouping: TelemetryGrouping!) {
-      smartMeterTelemetry(
-        deviceId: $deviceId
-        grouping: $grouping
-        start: $start
-        end: $end
-      ) {
-        readAt
-        consumptionDelta
-        demand
-      }
-    }
-  `;
-  
-  console.log('[Energy API] Telemetry query time range:', startTime.toISOString(), 'to', now.toISOString());
-  
-  try {
-    const response = await fetch(OCTOPUS_GRAPHQL_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': krakenToken,
-      },
-      body: JSON.stringify({
-        query,
-        variables: {
-          deviceId,
-          start: startTime.toISOString(),
-          end: now.toISOString(),
-          grouping: 'HALF_HOURLY',
-        },
-      }),
-    });
-    
-    if (!response.ok) {
-      console.error('[Energy API] GraphQL telemetry history request failed:', response.status);
-      const errorText = await response.text();
-      console.error('[Energy API] Response body:', errorText);
-      return [];
-    }
-    
-    const data: SmartMeterTelemetryResponse = await response.json();
-    console.log('[Energy API] Telemetry response:', JSON.stringify(data, null, 2));
-    
-    if (data.errors && data.errors.length > 0) {
-      console.error('[Energy API] GraphQL telemetry history errors:', data.errors);
-      return [];
-    }
-    
-    const telemetry = data.data?.smartMeterTelemetry;
-    if (!telemetry || telemetry.length === 0) {
-      console.log('[Energy API] No telemetry history data available from smartMeterTelemetry');
-      return [];
-    }
-    
-    const sortedTelemetry = [...telemetry].sort(
-      (a, b) => new Date(a.readAt).getTime() - new Date(b.readAt).getTime()
-    );
-    
-    console.log('[Energy API] Telemetry history entries:', sortedTelemetry.length);
-    if (sortedTelemetry.length > 0) {
-      console.log('[Energy API] First entry:', sortedTelemetry[0].readAt, 'consumption:', sortedTelemetry[0].consumptionDelta);
-      console.log('[Energy API] Last entry:', sortedTelemetry[sortedTelemetry.length - 1].readAt, 'consumption:', sortedTelemetry[sortedTelemetry.length - 1].consumptionDelta);
-    }
-    
-    return sortedTelemetry;
-  } catch (error) {
-    console.error('[Energy API] Error fetching smart meter telemetry history:', error);
-    return [];
-  }
-}
-
-// Fetch today's telemetry data starting from midnight
-export async function fetchTodaySmartMeterTelemetry(
-  deviceId: string,
-  apiKey: string
-): Promise<SmartMeterTelemetryEntry[]> {
-  console.log('[Energy API] ========== FETCH TODAY SMART METER TELEMETRY ==========');
-  console.log('[Energy API] Device ID:', deviceId);
-  
-  const krakenToken = await obtainKrakenToken(apiKey);
-  if (!krakenToken) {
-    console.error('[Energy API] Could not obtain Kraken token for today telemetry query');
-    return [];
-  }
-  
-  const now = new Date();
-  // Start from midnight today (local time)
-  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-  
-  console.log('[Energy API] Today telemetry query - start:', startOfDay.toISOString(), 'end:', now.toISOString());
-  
-  const query = `
-    query GetSmartMeterTelemetry($deviceId: String!, $start: DateTime!, $end: DateTime!, $grouping: TelemetryGrouping!) {
-      smartMeterTelemetry(
-        deviceId: $deviceId
-        grouping: $grouping
-        start: $start
-        end: $end
-      ) {
-        readAt
-        consumptionDelta
-        demand
-      }
-    }
-  `;
-  
-  try {
-    const response = await fetch(OCTOPUS_GRAPHQL_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': krakenToken,
-      },
-      body: JSON.stringify({
-        query,
-        variables: {
-          deviceId,
-          start: startOfDay.toISOString(),
-          end: now.toISOString(),
-          grouping: 'HALF_HOURLY',
-        },
-      }),
-    });
-    
-    if (!response.ok) {
-      console.error('[Energy API] Today telemetry request failed:', response.status);
-      const errorText = await response.text();
-      console.error('[Energy API] Response body:', errorText);
-      return [];
-    }
-    
-    const data: SmartMeterTelemetryResponse = await response.json();
-    console.log('[Energy API] Today telemetry raw response:', JSON.stringify(data, null, 2));
-    
-    if (data.errors && data.errors.length > 0) {
-      console.error('[Energy API] Today telemetry errors:', data.errors);
-      return [];
-    }
-    
-    const telemetry = data.data?.smartMeterTelemetry;
-    if (!telemetry || telemetry.length === 0) {
-      console.log('[Energy API] No telemetry data for today yet');
-      return [];
-    }
-    
-    const sortedTelemetry = [...telemetry].sort(
-      (a, b) => new Date(a.readAt).getTime() - new Date(b.readAt).getTime()
-    );
-    
-    console.log('[Energy API] Today telemetry entries:', sortedTelemetry.length);
-    if (sortedTelemetry.length > 0) {
-      console.log('[Energy API] First entry:', sortedTelemetry[0].readAt, 'consumption:', sortedTelemetry[0].consumptionDelta, 'kWh');
-      console.log('[Energy API] Last entry:', sortedTelemetry[sortedTelemetry.length - 1].readAt, 'consumption:', sortedTelemetry[sortedTelemetry.length - 1].consumptionDelta, 'kWh');
-      
-      // Calculate total consumption for today
-      const totalConsumption = sortedTelemetry.reduce((sum, entry) => sum + (entry.consumptionDelta || 0), 0);
-      console.log('[Energy API] Today total consumption so far:', totalConsumption.toFixed(3), 'kWh');
-    }
-    
-    return sortedTelemetry;
-  } catch (error) {
-    console.error('[Energy API] Error fetching today telemetry:', error);
-    return [];
-  }
-}
-
-// Fetch recent half-hourly consumption from the standard meter API
-// This works for all smart meters (not just those with Home Mini)
-export async function fetchRecentConsumption(
-  mpan: string,
-  serialNumber: string,
-  apiKey: string,
-  hoursBack: number = 24
-): Promise<{ interval_start: string; interval_end: string; consumption: number }[]> {
-  console.log('[Energy API] ========== FETCH RECENT CONSUMPTION ==========');
-  console.log('[Energy API] MPAN:', mpan);
-  console.log('[Energy API] Serial:', serialNumber);
-  console.log('[Energy API] Hours back:', hoursBack);
-  
-  const now = new Date();
-  const startTime = new Date(now.getTime() - hoursBack * 60 * 60 * 1000);
-  
-  const endpoint = `electricity-meter-points/${mpan}/meters/${serialNumber}/consumption`;
-  const baseUrl = `${OCTOPUS_API_BASE}/v1/${endpoint}/`;
-  
-  const params = new URLSearchParams();
-  params.append('page_size', '200');
-  params.append('period_from', startTime.toISOString());
-  params.append('order_by', 'period');
-  
-  const url = `${baseUrl}?${params.toString()}`;
-  
-  console.log('[Energy API] Fetching recent consumption from:', url);
-  
-  try {
-    const response = await fetch(url, {
-      headers: {
-        'Authorization': `Basic ${btoa(apiKey + ':')}`,
-      },
-    });
-    
-    if (!response.ok) {
-      console.error('[Energy API] Recent consumption request failed:', response.status);
-      return [];
-    }
-    
-    const data: ConsumptionResponse = await response.json();
-    
-    console.log('[Energy API] Recent consumption entries:', data.results.length);
-    if (data.results.length > 0) {
-      console.log('[Energy API] First entry:', data.results[0].interval_start);
-      console.log('[Energy API] Last entry:', data.results[data.results.length - 1].interval_start);
-      console.log('[Energy API] Sample consumption values:', data.results.slice(0, 5).map(r => r.consumption));
-    }
-    
-    // Sort by interval_start ascending
-    return data.results.sort(
-      (a, b) => new Date(a.interval_start).getTime() - new Date(b.interval_start).getTime()
-    );
-  } catch (error) {
-    console.error('[Energy API] Error fetching recent consumption:', error);
-    return [];
   }
 }
 
