@@ -32,6 +32,9 @@ const STORAGE_KEY_GAS_CV = '@consumption:gas_cv';
 const STORAGE_KEY_TUTORIAL_COMPLETED = '@tutorial:completed_v2';
 const STORAGE_KEY_SHOW_NET_FLUX = '@consumption:show_net_flux';
 const STORAGE_KEY_METER_DEVICE_ID = '@consumption:meter_device_id';
+const STORAGE_KEY_LAST_ELECTRICITY_BILL_DATE = '@consumption:last_electricity_bill_date';
+const STORAGE_KEY_LAST_GAS_BILL_DATE = '@consumption:last_gas_bill_date';
+const STORAGE_KEY_SAME_BILL_DATES = '@consumption:same_bill_dates';
 
 const FLEXIBLE_TARIFF_CODE = 'VAR-22-11-01';
 const DEFAULT_GAS_CV = 39.0;
@@ -86,7 +89,11 @@ export const [ConsumptionProvider, useConsumption] = createContextHook(() => {
   const [accountNumber, setAccountNumberState] = useState<string | null>(null);
   const [accountData, setAccountDataState] = useState<ProcessedAccountData | null>(null);
   const [dateRangeDays, setDateRangeDays] = useState<number>(28);
-  const [dateRangeMode, setDateRangeMode] = useState<'days' | 'last-month' | 'current-month' | 'custom'>('current-month');
+  const [dateRangeMode, setDateRangeModeState] = useState<'days' | 'last-month' | 'current-month' | 'custom' | 'bill-period'>('current-month');
+  const [lastElectricityBillDate, setLastElectricityBillDateState] = useState<Date | null>(null);
+  const [lastGasBillDate, setLastGasBillDateState] = useState<Date | null>(null);
+  const [sameBillDates, setSameBillDatesState] = useState<boolean>(true);
+  const [billDatesLoaded, setBillDatesLoaded] = useState<boolean>(false);
   const [customStartDate, setCustomStartDate] = useState<Date | null>(null);
   const [customEndDate, setCustomEndDate] = useState<Date | null>(null);
   const [showGas, setShowGasState] = useState<boolean>(true);
@@ -298,6 +305,37 @@ export const [ConsumptionProvider, useConsumption] = createContextHook(() => {
     gcTime: Infinity,
   });
 
+  useQuery({
+    queryKey: ['stored-bill-dates'],
+    queryFn: async () => {
+      const [electricityDate, gasDate, sameDates] = await Promise.all([
+        AsyncStorage.getItem(STORAGE_KEY_LAST_ELECTRICITY_BILL_DATE),
+        AsyncStorage.getItem(STORAGE_KEY_LAST_GAS_BILL_DATE),
+        AsyncStorage.getItem(STORAGE_KEY_SAME_BILL_DATES),
+      ]);
+      
+      if (electricityDate) {
+        setLastElectricityBillDateState(new Date(electricityDate));
+      }
+      if (gasDate) {
+        setLastGasBillDateState(new Date(gasDate));
+      }
+      if (sameDates !== null) {
+        setSameBillDatesState(sameDates === 'true');
+      }
+      
+      // Set bill-period as default if electricity bill date is set
+      if (electricityDate) {
+        setDateRangeModeState('bill-period');
+      }
+      
+      setBillDatesLoaded(true);
+      return { electricityDate, gasDate, sameDates };
+    },
+    staleTime: Infinity,
+    gcTime: Infinity,
+  });
+
   const saveApiKeyMutation = useMutation({
     mutationFn: async (key: string) => {
       await AsyncStorage.setItem(STORAGE_KEY_API_KEY, key);
@@ -402,6 +440,53 @@ export const [ConsumptionProvider, useConsumption] = createContextHook(() => {
       return show;
     },
   });
+
+  const saveLastElectricityBillDateMutation = useMutation({
+    mutationFn: async (date: Date | null) => {
+      console.log('[ConsumptionProvider] Saving last electricity bill date:', date);
+      if (date) {
+        await AsyncStorage.setItem(STORAGE_KEY_LAST_ELECTRICITY_BILL_DATE, date.toISOString());
+      } else {
+        await AsyncStorage.removeItem(STORAGE_KEY_LAST_ELECTRICITY_BILL_DATE);
+      }
+      setLastElectricityBillDateState(date);
+      return date;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['electricity-consumption'] });
+      queryClient.invalidateQueries({ queryKey: ['gas-consumption'] });
+    },
+  });
+
+  const saveLastGasBillDateMutation = useMutation({
+    mutationFn: async (date: Date | null) => {
+      console.log('[ConsumptionProvider] Saving last gas bill date:', date);
+      if (date) {
+        await AsyncStorage.setItem(STORAGE_KEY_LAST_GAS_BILL_DATE, date.toISOString());
+      } else {
+        await AsyncStorage.removeItem(STORAGE_KEY_LAST_GAS_BILL_DATE);
+      }
+      setLastGasBillDateState(date);
+      return date;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['gas-consumption'] });
+    },
+  });
+
+  const saveSameBillDatesMutation = useMutation({
+    mutationFn: async (same: boolean) => {
+      console.log('[ConsumptionProvider] Saving same bill dates:', same);
+      await AsyncStorage.setItem(STORAGE_KEY_SAME_BILL_DATES, same.toString());
+      setSameBillDatesState(same);
+      return same;
+    },
+  });
+
+  const setDateRangeMode = useCallback((mode: 'days' | 'last-month' | 'current-month' | 'custom' | 'bill-period') => {
+    console.log('[ConsumptionProvider] Setting date range mode:', mode);
+    setDateRangeModeState(mode);
+  }, []);
 
   useQuery({
     queryKey: ['meter-device-id', accountNumber, apiKey],
@@ -536,9 +621,28 @@ export const [ConsumptionProvider, useConsumption] = createContextHook(() => {
     staleTime: 60 * 60 * 1000,
   });
 
-  const getDateRangeForMode = useCallback(() => {
+  const getDateRangeForMode = useCallback((fuelType?: 'electricity' | 'gas') => {
     const now = new Date();
-    if (dateRangeMode === 'last-month') {
+    if (dateRangeMode === 'bill-period') {
+      // Use the appropriate bill date based on fuel type
+      let billDate: Date | null = null;
+      if (fuelType === 'gas' && !sameBillDates && lastGasBillDate) {
+        billDate = lastGasBillDate;
+      } else {
+        billDate = lastElectricityBillDate;
+      }
+      
+      if (billDate) {
+        const start = new Date(billDate);
+        start.setHours(0, 0, 0, 0);
+        console.log('[ConsumptionProvider] Bill period range - start:', start.toISOString(), 'end:', now.toISOString());
+        return { start, end: now };
+      }
+      // Fallback to current month if no bill date set
+      const start = new Date(now.getFullYear(), now.getMonth(), 1);
+      start.setHours(0, 0, 0, 0);
+      return { start, end: now };
+    } else if (dateRangeMode === 'last-month') {
       const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
       start.setHours(0, 0, 0, 0);
       const end = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -562,7 +666,7 @@ export const [ConsumptionProvider, useConsumption] = createContextHook(() => {
       start.setHours(0, 0, 0, 0);
       return { start, end: now };
     }
-  }, [dateRangeMode, dateRangeDays, customStartDate, customEndDate]);
+  }, [dateRangeMode, dateRangeDays, customStartDate, customEndDate, lastElectricityBillDate, lastGasBillDate, sameBillDates]);
 
   const fetchConsumptionForSerials = useCallback(async (
     mpanOrMprn: string,
@@ -616,7 +720,7 @@ export const [ConsumptionProvider, useConsumption] = createContextHook(() => {
   }, []);
 
   const electricityConsumptionQuery = useQuery({
-    queryKey: ['electricity-consumption', electricityMpan, electricitySerialNumbers, apiKey, dateRangeDays, dateRangeMode, customStartDate?.toISOString(), customEndDate?.toISOString()],
+    queryKey: ['electricity-consumption', electricityMpan, electricitySerialNumbers, apiKey, dateRangeDays, dateRangeMode, customStartDate?.toISOString(), customEndDate?.toISOString(), lastElectricityBillDate?.toISOString()],
     queryFn: async () => {
       console.log('[ConsumptionProvider] ========== FETCHING ELECTRICITY CONSUMPTION ==========');
       
@@ -625,7 +729,7 @@ export const [ConsumptionProvider, useConsumption] = createContextHook(() => {
         return null;
       }
       
-      const { start: startDate, end: endDate } = getDateRangeForMode();
+      const { start: startDate, end: endDate } = getDateRangeForMode('electricity');
       
       const result = await fetchConsumptionForSerials(
         electricityMpan,
@@ -651,12 +755,12 @@ export const [ConsumptionProvider, useConsumption] = createContextHook(() => {
   });
 
   const gasConsumptionQuery = useQuery({
-    queryKey: ['gas-consumption', gasMprn, gasSerialNumbers, apiKey, dateRangeDays, dateRangeMode, customStartDate?.toISOString(), customEndDate?.toISOString(), gasCv],
+    queryKey: ['gas-consumption', gasMprn, gasSerialNumbers, apiKey, dateRangeDays, dateRangeMode, customStartDate?.toISOString(), customEndDate?.toISOString(), gasCv, lastGasBillDate?.toISOString(), lastElectricityBillDate?.toISOString(), sameBillDates],
     queryFn: async () => {
       if (!gasMprn || gasSerialNumbers.length === 0 || !apiKey) {
         return null;
       }
-      const { start: startDate, end: endDate } = getDateRangeForMode();
+      const { start: startDate, end: endDate } = getDateRangeForMode('gas');
       
       const result = await fetchConsumptionForSerials(
         gasMprn,
@@ -1401,5 +1505,12 @@ export const [ConsumptionProvider, useConsumption] = createContextHook(() => {
     meterDeviceId: meterDeviceInfo?.deviceId || null,
     isLoadingTelemetry: smartMeterTelemetryQuery.isLoading,
     refetchTelemetry: smartMeterTelemetryQuery.refetch,
+    lastElectricityBillDate,
+    lastGasBillDate,
+    sameBillDates,
+    setLastElectricityBillDate: saveLastElectricityBillDateMutation.mutate,
+    setLastGasBillDate: saveLastGasBillDateMutation.mutate,
+    setSameBillDates: saveSameBillDatesMutation.mutate,
+    billDatesLoaded,
   };
 });

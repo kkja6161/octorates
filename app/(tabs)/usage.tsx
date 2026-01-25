@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,10 +10,11 @@ import {
   Platform,
   UIManager,
   Modal,
+  Switch,
 } from 'react-native';
 import { Stack, router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Zap, Flame, TrendingDown, TrendingUp, AlertCircle, X, RefreshCw, ChevronRight, ChevronLeft, Info } from 'lucide-react-native';
+import { Zap, Flame, TrendingDown, TrendingUp, AlertCircle, X, RefreshCw, ChevronRight, ChevronLeft, Info, Calendar, Settings2 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useConsumption } from '@/providers/ConsumptionProvider';
@@ -27,7 +28,7 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-type DateRangeType = 'last-month' | 'current-month' | 'custom';
+type DateRangeType = 'last-month' | 'current-month' | 'custom' | 'bill-period';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
@@ -55,6 +56,12 @@ export default function UsageScreen() {
     comparisonGasStandingCharge,
     electricityComparisonAvailability,
     gasComparisonAvailability,
+    lastElectricityBillDate,
+    lastGasBillDate,
+    sameBillDates,
+    setLastElectricityBillDate,
+    setLastGasBillDate,
+    setSameBillDates,
   } = useConsumption();
   
   const { comparisonElectricityTariffName, comparisonGasTariffName } = useComparisonRate();
@@ -66,6 +73,7 @@ export default function UsageScreen() {
   const [showCustomModal, setShowCustomModal] = useState<boolean>(false);
   const [showComparisonWarning, setShowComparisonWarning] = useState<boolean>(false);
   const [comparisonWarningType, setComparisonWarningType] = useState<'electricity' | 'gas'>('electricity');
+  const [showBillDateModal, setShowBillDateModal] = useState<boolean>(false);
 
   const handleFuelTypePress = (type: 'electricity' | 'gas') => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -83,7 +91,19 @@ export default function UsageScreen() {
       setDateRangeMode('current-month');
     } else if (type === 'custom') {
       setShowCustomModal(true);
+    } else if (type === 'bill-period') {
+      if (lastElectricityBillDate) {
+        setDateRangeMode('bill-period');
+      } else {
+        setShowBillDateModal(true);
+      }
     }
+  };
+
+  const formatBillDateLabel = () => {
+    if (!lastElectricityBillDate) return 'Bill Period';
+    const date = lastElectricityBillDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+    return `Since ${date}`;
   };
 
 
@@ -250,12 +270,21 @@ export default function UsageScreen() {
     dateRangeButton: {
       flex: 1,
       paddingVertical: 10,
-      paddingHorizontal: 16,
+      paddingHorizontal: 12,
       borderRadius: 12,
       backgroundColor: colors.surface,
       borderWidth: 1,
       borderColor: colors.border,
       alignItems: 'center',
+      justifyContent: 'center',
+    },
+    dateRangeButtonContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+    },
+    billDateSettingsButton: {
+      padding: 2,
     },
     dateRangeButtonActive: {
       backgroundColor: colors.primary,
@@ -800,12 +829,26 @@ export default function UsageScreen() {
           <>
             <View style={styles.dateRangeSelector}>
               <Pressable
-                style={[styles.dateRangeButton, dateRangeMode === 'last-month' && styles.dateRangeButtonActive]}
-                onPress={() => handleDateRangePress('last-month')}
+                style={[styles.dateRangeButton, dateRangeMode === 'bill-period' && styles.dateRangeButtonActive]}
+                onPress={() => handleDateRangePress('bill-period')}
               >
-                <Text style={[styles.dateRangeButtonText, dateRangeMode === 'last-month' && styles.dateRangeButtonTextActive]}>
-                  Last Month
-                </Text>
+                <View style={styles.dateRangeButtonContent}>
+                  <Text style={[styles.dateRangeButtonText, dateRangeMode === 'bill-period' && styles.dateRangeButtonTextActive]}>
+                    {formatBillDateLabel()}
+                  </Text>
+                  {lastElectricityBillDate && (
+                    <Pressable
+                      style={styles.billDateSettingsButton}
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        setShowBillDateModal(true);
+                      }}
+                      hitSlop={8}
+                    >
+                      <Settings2 size={14} color={dateRangeMode === 'bill-period' ? colors.surface : colors.text.secondary} />
+                    </Pressable>
+                  )}
+                </View>
               </Pressable>
               <Pressable
                 style={[styles.dateRangeButton, dateRangeMode === 'current-month' && styles.dateRangeButtonActive]}
@@ -1049,6 +1092,28 @@ export default function UsageScreen() {
           comparisonTariffName={comparisonWarningType === 'electricity' ? comparisonElectricityTariffName : comparisonGasTariffName}
           availability={comparisonWarningType === 'electricity' ? electricityComparisonAvailability : gasComparisonAvailability}
         />
+
+        <BillDateModal
+          visible={showBillDateModal}
+          onClose={() => setShowBillDateModal(false)}
+          electricityBillDate={lastElectricityBillDate}
+          gasBillDate={lastGasBillDate}
+          sameBillDates={sameBillDates}
+          showGas={showGas && !!gasMprn}
+          onApply={(electricityDate, gasDate, same) => {
+            setLastElectricityBillDate(electricityDate);
+            if (!same && gasDate) {
+              setLastGasBillDate(gasDate);
+            } else if (same) {
+              setLastGasBillDate(null);
+            }
+            setSameBillDates(same);
+            if (electricityDate) {
+              setDateRangeMode('bill-period');
+            }
+            setShowBillDateModal(false);
+          }}
+        />
       </View>
     </>
   );
@@ -1195,6 +1260,435 @@ function ComparisonWarningModal({
           <Pressable style={styles.warningModalButton} onPress={onClose}>
             <Text style={styles.warningModalButtonText}>Got it</Text>
           </Pressable>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+function BillDateModal({
+  visible,
+  onClose,
+  electricityBillDate,
+  gasBillDate,
+  sameBillDates,
+  showGas,
+  onApply,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  electricityBillDate: Date | null;
+  gasBillDate: Date | null;
+  sameBillDates: boolean;
+  showGas: boolean;
+  onApply: (electricityDate: Date | null, gasDate: Date | null, sameDates: boolean) => void;
+}) {
+  const { isDark } = useTheme();
+  const colors = useColors(isDark);
+  const today = useMemo(() => new Date(), []);
+  const [tempElectricityDate, setTempElectricityDate] = useState<Date | null>(null);
+  const [tempGasDate, setTempGasDate] = useState<Date | null>(null);
+  const [tempSameDates, setTempSameDates] = useState<boolean>(true);
+  const [selectingFuelType, setSelectingFuelType] = useState<'electricity' | 'gas'>('electricity');
+  const [viewingMonth, setViewingMonth] = useState<Date>(today);
+  const [hasInitialized, setHasInitialized] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (visible && !hasInitialized) {
+      setTempElectricityDate(electricityBillDate);
+      setTempGasDate(gasBillDate);
+      setTempSameDates(sameBillDates);
+      setViewingMonth(electricityBillDate || today);
+      setSelectingFuelType('electricity');
+      setHasInitialized(true);
+    } else if (!visible) {
+      setHasInitialized(false);
+    }
+  }, [visible, hasInitialized, electricityBillDate, gasBillDate, sameBillDates, today]);
+
+  const getDaysInMonth = useCallback((date: Date) => {
+    return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+  }, []);
+
+  const getFirstDayOfMonth = useCallback((date: Date) => {
+    return new Date(date.getFullYear(), date.getMonth(), 1).getDay();
+  }, []);
+
+  const handlePrevMonth = () => {
+    setViewingMonth(new Date(viewingMonth.getFullYear(), viewingMonth.getMonth() - 1, 1));
+  };
+
+  const handleNextMonth = () => {
+    const nextMonth = new Date(viewingMonth.getFullYear(), viewingMonth.getMonth() + 1, 1);
+    if (nextMonth <= today) {
+      setViewingMonth(nextMonth);
+    }
+  };
+
+  const handleDayPress = (day: number) => {
+    const selectedDate = new Date(viewingMonth.getFullYear(), viewingMonth.getMonth(), day);
+    
+    if (selectingFuelType === 'electricity' || tempSameDates) {
+      setTempElectricityDate(selectedDate);
+      if (tempSameDates) {
+        setTempGasDate(null);
+      }
+    } else {
+      setTempGasDate(selectedDate);
+    }
+  };
+
+  const handleApply = () => {
+    onApply(tempElectricityDate, tempSameDates ? null : tempGasDate, tempSameDates);
+  };
+
+  const formatDate = (date: Date | null) => {
+    if (!date) return 'Select date';
+    return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  };
+
+  const isDateSelected = (day: number) => {
+    const date = new Date(viewingMonth.getFullYear(), viewingMonth.getMonth(), day);
+    const currentDate = selectingFuelType === 'electricity' || tempSameDates ? tempElectricityDate : tempGasDate;
+    return currentDate && date.toDateString() === currentDate.toDateString();
+  };
+
+  const isDateDisabled = (day: number) => {
+    const date = new Date(viewingMonth.getFullYear(), viewingMonth.getMonth(), day);
+    return date > today;
+  };
+
+  const daysInMonth = getDaysInMonth(viewingMonth);
+  const firstDay = getFirstDayOfMonth(viewingMonth);
+  const canGoNext = new Date(viewingMonth.getFullYear(), viewingMonth.getMonth() + 1, 1) <= today;
+
+  const styles = StyleSheet.create({
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: colors.overlay,
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: 20,
+    },
+    modalContent: {
+      backgroundColor: colors.surface,
+      borderRadius: 20,
+      padding: 24,
+      width: '100%',
+      maxWidth: 400,
+      gap: 16,
+    },
+    modalHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    modalTitle: {
+      fontSize: 20,
+      fontWeight: '700' as const,
+      color: colors.text.primary,
+    },
+    modalDescription: {
+      fontSize: 14,
+      lineHeight: 20,
+      color: colors.text.secondary,
+    },
+    toggleRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      backgroundColor: colors.background,
+      padding: 14,
+      borderRadius: 12,
+    },
+    toggleLabel: {
+      fontSize: 14,
+      fontWeight: '500' as const,
+      color: colors.text.primary,
+      flex: 1,
+    },
+    fuelTypeSelector: {
+      flexDirection: 'row',
+      gap: 8,
+    },
+    fuelTypeButton: {
+      flex: 1,
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      borderRadius: 10,
+      backgroundColor: colors.background,
+      alignItems: 'center',
+      borderWidth: 2,
+      borderColor: 'transparent',
+    },
+    fuelTypeButtonActive: {
+      borderColor: colors.primary,
+      backgroundColor: isDark ? 'rgba(66, 165, 245, 0.15)' : 'rgba(37, 99, 235, 0.1)',
+    },
+    fuelTypeButtonText: {
+      fontSize: 14,
+      fontWeight: '600' as const,
+      color: colors.text.secondary,
+    },
+    fuelTypeButtonTextActive: {
+      color: colors.primary,
+    },
+    fuelTypeDateValue: {
+      fontSize: 12,
+      color: colors.text.secondary,
+      marginTop: 4,
+    },
+    calendarContainer: {
+      marginBottom: 8,
+    },
+    calendarHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 16,
+    },
+    calendarNavButton: {
+      padding: 8,
+      borderRadius: 8,
+    },
+    calendarNavButtonDisabled: {
+      opacity: 0.4,
+    },
+    calendarMonthTitle: {
+      fontSize: 16,
+      fontWeight: '600' as const,
+      color: colors.text.primary,
+    },
+    calendarGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+    },
+    calendarDayLabel: {
+      width: '14.28%',
+      alignItems: 'center',
+      paddingVertical: 8,
+    },
+    calendarDayLabelText: {
+      fontSize: 12,
+      fontWeight: '600' as const,
+      color: colors.text.secondary,
+    },
+    calendarDay: {
+      width: '14.28%',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 10,
+    },
+    calendarDaySelected: {
+      backgroundColor: colors.primary,
+      borderRadius: 20,
+    },
+    calendarDayDisabled: {
+      opacity: 0.3,
+    },
+    calendarDayText: {
+      fontSize: 14,
+      fontWeight: '500' as const,
+      color: colors.text.primary,
+    },
+    calendarDayTextSelected: {
+      color: colors.surface,
+      fontWeight: '700' as const,
+    },
+    calendarDayTextDisabled: {
+      color: colors.text.secondary,
+    },
+    modalButtons: {
+      flexDirection: 'row',
+      gap: 12,
+      marginTop: 8,
+    },
+    modalButton: {
+      flex: 1,
+      paddingVertical: 14,
+      borderRadius: 12,
+      alignItems: 'center',
+    },
+    modalButtonCancel: {
+      backgroundColor: colors.background,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    modalButtonConfirm: {
+      backgroundColor: colors.primary,
+    },
+    modalButtonTextCancel: {
+      fontSize: 16,
+      fontWeight: '600' as const,
+      color: colors.text.primary,
+    },
+    modalButtonTextConfirm: {
+      fontSize: 16,
+      fontWeight: '600' as const,
+      color: colors.surface,
+    },
+    modalButtonDisabled: {
+      backgroundColor: colors.border,
+    },
+  });
+
+  const renderCalendar = () => {
+    const days = [];
+    const dayLabels = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+
+    for (let i = 0; i < dayLabels.length; i++) {
+      days.push(
+        <View key={`label-${i}`} style={styles.calendarDayLabel}>
+          <Text style={styles.calendarDayLabelText}>{dayLabels[i]}</Text>
+        </View>
+      );
+    }
+
+    for (let i = 0; i < firstDay; i++) {
+      days.push(<View key={`empty-${i}`} style={styles.calendarDay} />);
+    }
+
+    for (let day = 1; day <= daysInMonth; day++) {
+      const disabled = isDateDisabled(day);
+      const selected = isDateSelected(day);
+
+      days.push(
+        <Pressable
+          key={day}
+          style={[
+            styles.calendarDay,
+            selected && styles.calendarDaySelected,
+            disabled && styles.calendarDayDisabled,
+          ]}
+          onPress={() => !disabled && handleDayPress(day)}
+          disabled={disabled}
+        >
+          <Text
+            style={[
+              styles.calendarDayText,
+              selected && styles.calendarDayTextSelected,
+              disabled && styles.calendarDayTextDisabled,
+            ]}
+          >
+            {day}
+          </Text>
+        </Pressable>
+      );
+    }
+
+    return days;
+  };
+
+  const canApply = tempElectricityDate !== null;
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.modalOverlay} onPress={onClose}>
+        <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Bill Period Dates</Text>
+            <Pressable onPress={onClose}>
+              <X size={24} color={colors.text.primary} />
+            </Pressable>
+          </View>
+
+          <Text style={styles.modalDescription}>
+            Set your last bill date to track usage since your billing period started.
+          </Text>
+
+          {showGas && (
+            <>
+              <View style={styles.toggleRow}>
+                <Text style={styles.toggleLabel}>Same date for electricity and gas</Text>
+                <Switch
+                  value={tempSameDates}
+                  onValueChange={setTempSameDates}
+                  trackColor={{ false: colors.border, true: colors.primary }}
+                  thumbColor={colors.surface}
+                />
+              </View>
+
+              {!tempSameDates && (
+                <View style={styles.fuelTypeSelector}>
+                  <Pressable
+                    style={[
+                      styles.fuelTypeButton,
+                      selectingFuelType === 'electricity' && styles.fuelTypeButtonActive,
+                    ]}
+                    onPress={() => setSelectingFuelType('electricity')}
+                  >
+                    <Text style={[
+                      styles.fuelTypeButtonText,
+                      selectingFuelType === 'electricity' && styles.fuelTypeButtonTextActive,
+                    ]}>
+                      Electricity
+                    </Text>
+                    <Text style={styles.fuelTypeDateValue}>
+                      {formatDate(tempElectricityDate)}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    style={[
+                      styles.fuelTypeButton,
+                      selectingFuelType === 'gas' && styles.fuelTypeButtonActive,
+                    ]}
+                    onPress={() => setSelectingFuelType('gas')}
+                  >
+                    <Text style={[
+                      styles.fuelTypeButtonText,
+                      selectingFuelType === 'gas' && styles.fuelTypeButtonTextActive,
+                    ]}>
+                      Gas
+                    </Text>
+                    <Text style={styles.fuelTypeDateValue}>
+                      {formatDate(tempGasDate)}
+                    </Text>
+                  </Pressable>
+                </View>
+              )}
+            </>
+          )}
+
+          <View style={styles.calendarContainer}>
+            <View style={styles.calendarHeader}>
+              <Pressable onPress={handlePrevMonth} style={styles.calendarNavButton}>
+                <ChevronLeft size={20} color={colors.text.primary} />
+              </Pressable>
+              <Text style={styles.calendarMonthTitle}>
+                {MONTHS[viewingMonth.getMonth()]} {viewingMonth.getFullYear()}
+              </Text>
+              <Pressable
+                onPress={handleNextMonth}
+                style={[styles.calendarNavButton, !canGoNext && styles.calendarNavButtonDisabled]}
+                disabled={!canGoNext}
+              >
+                <ChevronRight size={20} color={canGoNext ? colors.text.primary : colors.text.secondary} />
+              </Pressable>
+            </View>
+            <View style={styles.calendarGrid}>
+              {renderCalendar()}
+            </View>
+          </View>
+
+          <View style={styles.modalButtons}>
+            <Pressable
+              style={[styles.modalButton, styles.modalButtonCancel]}
+              onPress={onClose}
+            >
+              <Text style={styles.modalButtonTextCancel}>Cancel</Text>
+            </Pressable>
+            <Pressable
+              style={[
+                styles.modalButton,
+                styles.modalButtonConfirm,
+                !canApply && styles.modalButtonDisabled,
+              ]}
+              onPress={handleApply}
+              disabled={!canApply}
+            >
+              <Text style={styles.modalButtonTextConfirm}>Apply</Text>
+            </Pressable>
+          </View>
         </Pressable>
       </Pressable>
     </Modal>
