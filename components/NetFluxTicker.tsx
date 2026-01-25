@@ -6,7 +6,8 @@ import {
   Animated,
   Pressable,
 } from 'react-native';
-import { Activity, Sun, ChevronDown, ChevronUp } from 'lucide-react-native';
+import { router } from 'expo-router';
+import { Activity, Sun, ChevronDown, ChevronUp, ChevronRight } from 'lucide-react-native';
 
 interface NetFluxTickerProps {
   importRate: number | null;
@@ -240,6 +241,21 @@ export function NetFluxTicker({
       color: colors.text.secondary,
       textAlign: 'center' as const,
     },
+    viewDetailsRow: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+      marginTop: 12,
+      paddingTop: 10,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+      gap: 4,
+    },
+    viewDetailsText: {
+      fontSize: 13,
+      fontWeight: '600' as const,
+      color: colors.primary,
+    },
   });
 
   const loadKw = (Number(currentLoad) || 0) / 1000;
@@ -281,7 +297,12 @@ export function NetFluxTicker({
       </Pressable>
 
       {expanded && (
-        <View style={styles.expandedContent}>
+        <Pressable 
+          style={styles.expandedContent} 
+          onPress={() => router.push('/flux-detail')}
+          accessibilityRole="button"
+          accessibilityLabel="View today's usage details"
+        >
           <View style={styles.detailsRow}>
             <View style={styles.detailItem}>
               <Text style={styles.detailLabel}>Import Rate</Text>
@@ -340,7 +361,12 @@ export function NetFluxTicker({
               </Text>
             </View>
           )}
-        </View>
+
+          <View style={styles.viewDetailsRow}>
+            <Text style={styles.viewDetailsText}>View today usage</Text>
+            <ChevronRight size={16} color={colors.primary} />
+          </View>
+        </Pressable>
       )}
     </View>
   );

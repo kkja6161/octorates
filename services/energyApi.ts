@@ -1416,6 +1416,104 @@ export async function fetchSmartMeterTelemetry(
   }
 }
 
+// Today's half-hourly consumption data
+export interface HalfHourlyConsumptionEntry {
+  readAt: string;
+  consumptionDelta: number; // kWh consumed in this half-hour period
+  demand: number; // Average power demand in kW
+}
+
+export interface TodayConsumptionResponse {
+  entries: HalfHourlyConsumptionEntry[];
+  totalConsumption: number;
+  totalCost: number;
+}
+
+export async function fetchTodayHalfHourlyConsumption(
+  deviceId: string,
+  apiKey: string
+): Promise<HalfHourlyConsumptionEntry[]> {
+  console.log('[Energy API] ========== FETCH TODAY HALF-HOURLY CONSUMPTION ==========');
+  console.log('[Energy API] Device ID:', deviceId);
+  
+  const krakenToken = await obtainKrakenToken(apiKey);
+  if (!krakenToken) {
+    console.error('[Energy API] Could not obtain Kraken token for today consumption query');
+    return [];
+  }
+  
+  // Get start of today (midnight) and current time
+  const now = new Date();
+  const startOfDay = new Date(now);
+  startOfDay.setHours(0, 0, 0, 0);
+  
+  const query = `
+    query GetTodayConsumption($deviceId: String!, $start: DateTime!, $end: DateTime!) {
+      smartMeterTelemetry(
+        deviceId: $deviceId
+        grouping: HALF_HOURLY
+        start: $start
+        end: $end
+      ) {
+        readAt
+        consumptionDelta
+        demand
+      }
+    }
+  `;
+  
+  try {
+    const response = await fetch(OCTOPUS_GRAPHQL_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': krakenToken,
+      },
+      body: JSON.stringify({
+        query,
+        variables: {
+          deviceId,
+          start: startOfDay.toISOString(),
+          end: now.toISOString(),
+        },
+      }),
+    });
+    
+    if (!response.ok) {
+      console.error('[Energy API] GraphQL today consumption request failed:', response.status);
+      return [];
+    }
+    
+    const data: SmartMeterTelemetryResponse = await response.json();
+    
+    if (data.errors && data.errors.length > 0) {
+      console.error('[Energy API] GraphQL today consumption errors:', data.errors);
+      return [];
+    }
+    
+    const telemetry = data.data?.smartMeterTelemetry;
+    if (!telemetry || telemetry.length === 0) {
+      console.log('[Energy API] No today consumption data available');
+      return [];
+    }
+    
+    // Sort by time ascending
+    const sortedTelemetry = [...telemetry].sort(
+      (a, b) => new Date(a.readAt).getTime() - new Date(b.readAt).getTime()
+    );
+    
+    console.log('[Energy API] Today consumption entries:', sortedTelemetry.length);
+    
+    const total = sortedTelemetry.reduce((sum, e) => sum + (e.consumptionDelta || 0), 0);
+    console.log('[Energy API] Today total consumption:', total.toFixed(3), 'kWh');
+    
+    return sortedTelemetry;
+  } catch (error) {
+    console.error('[Energy API] Error fetching today consumption:', error);
+    return [];
+  }
+}
+
 export async function fetchProductDetails(productCode: string): Promise<ProductDetails | null> {
   console.log(`[Energy API] ========== FETCH PRODUCT DETAILS ==========`);
   console.log(`[Energy API] Product code: ${productCode}`);
