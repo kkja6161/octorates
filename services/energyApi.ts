@@ -1218,7 +1218,8 @@ async function obtainKrakenToken(apiKey: string): Promise<string | null> {
     const data = await response.json();
     
     if (data.errors && data.errors.length > 0) {
-      console.error('[Energy API] Kraken token errors:', data.errors);
+      const errorMessages = data.errors.map((e: { message: string }) => e.message).join(', ');
+      console.error('[Energy API] Kraken token errors:', errorMessages);
       return null;
     }
     
@@ -1293,7 +1294,8 @@ export async function fetchMeterDeviceId(
     const data: AccountMetersResponse = await response.json();
     
     if (data.errors && data.errors.length > 0) {
-      console.error('[Energy API] GraphQL errors:', data.errors);
+      const errorMessages = data.errors.map(e => e.message).join(', ');
+      console.error('[Energy API] GraphQL errors:', errorMessages);
       return null;
     }
     
@@ -1387,7 +1389,9 @@ export async function fetchSmartMeterTelemetry(
     const data: SmartMeterTelemetryResponse = await response.json();
     
     if (data.errors && data.errors.length > 0) {
-      console.error('[Energy API] GraphQL telemetry errors:', data.errors);
+      const errorMessages = data.errors.map(e => e.message).join(', ');
+      console.error('[Energy API] GraphQL telemetry errors:', errorMessages);
+      console.error('[Energy API] Full error details:', JSON.stringify(data.errors, null, 2));
       return null;
     }
     
@@ -1487,7 +1491,9 @@ export async function fetchTodayHalfHourlyConsumption(
     const data: SmartMeterTelemetryResponse = await response.json();
     
     if (data.errors && data.errors.length > 0) {
-      console.error('[Energy API] GraphQL today consumption errors:', data.errors);
+      const errorMessages = data.errors.map(e => e.message).join(', ');
+      console.error('[Energy API] GraphQL today consumption errors:', errorMessages);
+      console.error('[Energy API] Full error details:', JSON.stringify(data.errors, null, 2));
       return [];
     }
     
