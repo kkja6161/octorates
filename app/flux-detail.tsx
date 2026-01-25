@@ -44,9 +44,9 @@ export default function FluxDetailScreen() {
       }
     },
     enabled: !!meterDeviceId && !!apiKey,
-    refetchInterval: 5 * 60 * 1000,
-    staleTime: 2 * 60 * 1000,
-    retry: 2,
+    refetchInterval: 10 * 60 * 1000, // 10 minutes to respect API rate limits
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    retry: 1, // Reduce retries to avoid rate limiting
   });
 
   const chartData = useMemo((): UsageCostDataPoint[] => {

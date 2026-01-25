@@ -434,8 +434,8 @@ export const [ConsumptionProvider, useConsumption] = createContextHook(() => {
       return telemetry;
     },
     enabled: !!meterDeviceInfo?.deviceId && !!apiKey && showNetFlux,
-    refetchInterval: 60 * 1000,
-    staleTime: 30 * 1000,
+    refetchInterval: 3 * 60 * 1000, // 3 minutes to respect API rate limits
+    staleTime: 2 * 60 * 1000, // 2 minutes
   });
 
   const fetchAndSaveAccountData = useCallback(async (accNumber: string, key: string) => {

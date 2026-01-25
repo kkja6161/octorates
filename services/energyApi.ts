@@ -1181,6 +1181,25 @@ const OCTOPUS_GRAPHQL_URL = 'https://api.octopus.energy/v1/graphql/';
 // Cache for Kraken tokens
 let cachedKrakenToken: { token: string; expiresAt: Date } | null = null;
 
+// Rate limiting cache for telemetry API calls
+interface TelemetryCache {
+  data: SmartMeterTelemetryEntry | null;
+  timestamp: number;
+}
+
+interface TodayConsumptionCache {
+  data: HalfHourlyConsumptionEntry[];
+  timestamp: number;
+  dateKey: string;
+}
+
+const telemetryCache: Map<string, TelemetryCache> = new Map();
+const todayConsumptionCache: Map<string, TodayConsumptionCache> = new Map();
+
+// Minimum intervals between API calls (in milliseconds)
+const TELEMETRY_MIN_INTERVAL = 2 * 60 * 1000; // 2 minutes for real-time telemetry
+const TODAY_CONSUMPTION_MIN_INTERVAL = 5 * 60 * 1000; // 5 minutes for today's consumption
+
 async function obtainKrakenToken(apiKey: string): Promise<string | null> {
   // Check if we have a valid cached token
   if (cachedKrakenToken && cachedKrakenToken.expiresAt > new Date()) {
@@ -1338,15 +1357,26 @@ export async function fetchSmartMeterTelemetry(
   console.log('[Energy API] Device ID:', deviceId);
   console.log('[Energy API] Grouping:', grouping);
   
+  // Check rate limiting cache
+  const cacheKey = `${deviceId}-${grouping}`;
+  const cached = telemetryCache.get(cacheKey);
+  const now = Date.now();
+  
+  if (cached && (now - cached.timestamp) < TELEMETRY_MIN_INTERVAL) {
+    const remainingSecs = Math.ceil((TELEMETRY_MIN_INTERVAL - (now - cached.timestamp)) / 1000);
+    console.log(`[Energy API] Rate limited - returning cached telemetry (${remainingSecs}s until next call)`);
+    return cached.data;
+  }
+  
   // First obtain a Kraken token
   const krakenToken = await obtainKrakenToken(apiKey);
   if (!krakenToken) {
     console.error('[Energy API] Could not obtain Kraken token for telemetry query');
-    return null;
+    return cached?.data ?? null;
   }
   
-  const now = new Date();
-  const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+  const currentTime = new Date();
+  const oneHourAgo = new Date(currentTime.getTime() - 60 * 60 * 1000);
   
   const query = `
     query GetSmartMeterTelemetry($deviceId: String!, $start: DateTime!, $end: DateTime!, $grouping: TelemetryGrouping!) {
@@ -1375,7 +1405,7 @@ export async function fetchSmartMeterTelemetry(
         variables: {
           deviceId,
           start: oneHourAgo.toISOString(),
-          end: now.toISOString(),
+          end: currentTime.toISOString(),
           grouping,
         },
       }),
@@ -1413,10 +1443,14 @@ export async function fetchSmartMeterTelemetry(
       consumptionDelta: latest.consumptionDelta,
     });
     
+    // Update cache
+    telemetryCache.set(cacheKey, { data: latest, timestamp: Date.now() });
+    
     return latest;
   } catch (error) {
     console.error('[Energy API] Error fetching smart meter telemetry:', error);
-    return null;
+    // Return cached data on error if available
+    return cached?.data ?? null;
   }
 }
 
@@ -1440,14 +1474,27 @@ export async function fetchTodayHalfHourlyConsumption(
   console.log('[Energy API] ========== FETCH TODAY HALF-HOURLY CONSUMPTION ==========');
   console.log('[Energy API] Device ID:', deviceId);
   
+  // Check rate limiting cache
+  const now = new Date();
+  const dateKey = now.toISOString().split('T')[0]; // YYYY-MM-DD
+  const cacheKey = `${deviceId}-today`;
+  const cached = todayConsumptionCache.get(cacheKey);
+  const currentTime = Date.now();
+  
+  // Return cached data if within rate limit AND same day
+  if (cached && cached.dateKey === dateKey && (currentTime - cached.timestamp) < TODAY_CONSUMPTION_MIN_INTERVAL) {
+    const remainingSecs = Math.ceil((TODAY_CONSUMPTION_MIN_INTERVAL - (currentTime - cached.timestamp)) / 1000);
+    console.log(`[Energy API] Rate limited - returning cached today consumption (${remainingSecs}s until next call)`);
+    return cached.data;
+  }
+  
   const krakenToken = await obtainKrakenToken(apiKey);
   if (!krakenToken) {
     console.error('[Energy API] Could not obtain Kraken token for today consumption query');
-    return [];
+    return cached?.data ?? [];
   }
   
   // Get start of today (midnight) and current time
-  const now = new Date();
   const startOfDay = new Date(now);
   startOfDay.setHours(0, 0, 0, 0);
   
@@ -1513,9 +1560,20 @@ export async function fetchTodayHalfHourlyConsumption(
     const total = sortedTelemetry.reduce((sum, e) => sum + (e.consumptionDelta || 0), 0);
     console.log('[Energy API] Today total consumption:', total.toFixed(3), 'kWh');
     
+    // Update cache
+    todayConsumptionCache.set(cacheKey, { 
+      data: sortedTelemetry, 
+      timestamp: Date.now(),
+      dateKey 
+    });
+    
     return sortedTelemetry;
   } catch (error) {
     console.error('[Energy API] Error fetching today consumption:', error);
+    // Return cached data on error if available and from today
+    if (cached && cached.dateKey === dateKey) {
+      return cached.data;
+    }
     return [];
   }
 }
