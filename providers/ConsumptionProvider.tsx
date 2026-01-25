@@ -1398,6 +1398,7 @@ export const [ConsumptionProvider, useConsumption] = createContextHook(() => {
     liveDemand,
     liveDemandUpdatedAt,
     hasSmartMeter: !!meterDeviceInfo,
+    meterDeviceId: meterDeviceInfo?.deviceId || null,
     isLoadingTelemetry: smartMeterTelemetryQuery.isLoading,
     refetchTelemetry: smartMeterTelemetryQuery.refetch,
   };

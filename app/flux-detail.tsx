@@ -21,35 +21,19 @@ import { UsageCostChart, UsageCostDataPoint } from '@/components/UsageCostChart'
 export default function FluxDetailScreen() {
   const { isDark } = useTheme();
   const colors = useAccessibleColors();
-  const { apiKey, hasSmartMeter } = useConsumption();
+  const { apiKey, hasSmartMeter, meterDeviceId } = useConsumption();
   const { todayElectricityRates } = useEnergyRates();
 
-  const meterDeviceQuery = useQuery({
-    queryKey: ['meter-device-for-flux'],
-    queryFn: async () => {
-      const stored = await import('@react-native-async-storage/async-storage').then(m => 
-        m.default.getItem('@consumption:meter_device_id')
-      );
-      if (stored) {
-        return JSON.parse(stored);
-      }
-      return null;
-    },
-    staleTime: Infinity,
-  });
-
-  const deviceId = meterDeviceQuery.data?.deviceId;
-
   const todayConsumptionQuery = useQuery({
-    queryKey: ['today-half-hourly-consumption', deviceId, apiKey],
+    queryKey: ['today-half-hourly-consumption', meterDeviceId, apiKey],
     queryFn: async () => {
-      if (!deviceId || !apiKey) return [];
+      if (!meterDeviceId || !apiKey) return [];
       console.log('[FluxDetail] Fetching today half-hourly consumption...');
-      const data = await fetchTodayHalfHourlyConsumption(deviceId, apiKey);
+      const data = await fetchTodayHalfHourlyConsumption(meterDeviceId, apiKey);
       console.log('[FluxDetail] Got', data.length, 'entries');
       return data;
     },
-    enabled: !!deviceId && !!apiKey,
+    enabled: !!meterDeviceId && !!apiKey,
     refetchInterval: 5 * 60 * 1000,
     staleTime: 2 * 60 * 1000,
   });
@@ -113,7 +97,7 @@ export default function FluxDetailScreen() {
     return { totalKWh, totalCost, avgRate, peakKWh, peakTime };
   }, [chartData]);
 
-  const isLoading = todayConsumptionQuery.isLoading || meterDeviceQuery.isLoading;
+  const isLoading = todayConsumptionQuery.isLoading;
 
   const styles = StyleSheet.create({
     container: {
