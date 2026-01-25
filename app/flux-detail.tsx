@@ -24,18 +24,29 @@ export default function FluxDetailScreen() {
   const { apiKey, hasSmartMeter, meterDeviceId } = useConsumption();
   const { todayElectricityRates } = useEnergyRates();
 
+  console.log('[FluxDetail] Screen loaded - hasSmartMeter:', hasSmartMeter, 'meterDeviceId:', meterDeviceId, 'apiKey:', apiKey ? 'present' : 'missing');
+
   const todayConsumptionQuery = useQuery({
     queryKey: ['today-half-hourly-consumption', meterDeviceId, apiKey],
     queryFn: async () => {
-      if (!meterDeviceId || !apiKey) return [];
-      console.log('[FluxDetail] Fetching today half-hourly consumption...');
-      const data = await fetchTodayHalfHourlyConsumption(meterDeviceId, apiKey);
-      console.log('[FluxDetail] Got', data.length, 'entries');
-      return data;
+      if (!meterDeviceId || !apiKey) {
+        console.log('[FluxDetail] Missing credentials - deviceId:', meterDeviceId, 'apiKey:', !!apiKey);
+        return [];
+      }
+      console.log('[FluxDetail] Fetching today half-hourly consumption for device:', meterDeviceId);
+      try {
+        const data = await fetchTodayHalfHourlyConsumption(meterDeviceId, apiKey);
+        console.log('[FluxDetail] Got', data.length, 'entries');
+        return data;
+      } catch (error) {
+        console.error('[FluxDetail] Error fetching consumption:', error);
+        throw error;
+      }
     },
     enabled: !!meterDeviceId && !!apiKey,
     refetchInterval: 5 * 60 * 1000,
     staleTime: 2 * 60 * 1000,
+    retry: 2,
   });
 
   const chartData = useMemo((): UsageCostDataPoint[] => {
@@ -98,6 +109,10 @@ export default function FluxDetailScreen() {
   }, [chartData]);
 
   const isLoading = todayConsumptionQuery.isLoading;
+  const isError = todayConsumptionQuery.isError;
+  const queryEnabled = !!meterDeviceId && !!apiKey;
+
+  console.log('[FluxDetail] Query state - enabled:', queryEnabled, 'isLoading:', isLoading, 'isError:', isError, 'dataLength:', todayConsumptionQuery.data?.length ?? 0);
 
   const styles = StyleSheet.create({
     container: {
@@ -257,7 +272,7 @@ export default function FluxDetailScreen() {
     },
   });
 
-  if (!hasSmartMeter) {
+  if (!hasSmartMeter || !meterDeviceId) {
     return (
       <>
         <Stack.Screen 
@@ -306,6 +321,14 @@ export default function FluxDetailScreen() {
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color={colors.primary} />
               <Text style={styles.loadingText}>Loading usage data...</Text>
+            </View>
+          ) : isError ? (
+            <View style={styles.noDataContainer}>
+              <Activity size={48} color={colors.error} />
+              <Text style={styles.noDataTitle}>Error Loading Data</Text>
+              <Text style={styles.noDataText}>
+                Failed to fetch consumption data. Pull down to retry.
+              </Text>
             </View>
           ) : chartData.length === 0 ? (
             <View style={styles.noDataContainer}>
