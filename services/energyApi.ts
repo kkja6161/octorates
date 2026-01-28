@@ -1197,8 +1197,13 @@ const telemetryCache: Map<string, TelemetryCache> = new Map();
 const todayConsumptionCache: Map<string, TodayConsumptionCache> = new Map();
 
 // Minimum intervals between API calls (in milliseconds)
-const TELEMETRY_MIN_INTERVAL = 2 * 60 * 1000; // 2 minutes for real-time telemetry
-const TODAY_CONSUMPTION_MIN_INTERVAL = 5 * 60 * 1000; // 5 minutes for today's consumption
+// Octopus API has strict rate limits - be very conservative
+const TELEMETRY_MIN_INTERVAL = 5 * 60 * 1000; // 5 minutes for real-time telemetry
+const TODAY_CONSUMPTION_MIN_INTERVAL = 10 * 60 * 1000; // 10 minutes for today's consumption
+const RATE_LIMIT_BACKOFF = 15 * 60 * 1000; // 15 minutes backoff after rate limit error
+
+// Track rate limit state
+let rateLimitedUntil: number = 0;
 
 async function obtainKrakenToken(apiKey: string): Promise<string | null> {
   // Check if we have a valid cached token
@@ -1357,10 +1362,20 @@ export async function fetchSmartMeterTelemetry(
   console.log('[Energy API] Device ID:', deviceId);
   console.log('[Energy API] Grouping:', grouping);
   
+  const now = Date.now();
+  
+  // Check if we're in rate limit backoff period
+  if (rateLimitedUntil > now) {
+    const remainingMins = Math.ceil((rateLimitedUntil - now) / 60000);
+    console.log(`[Energy API] Rate limit backoff active - ${remainingMins} minutes remaining`);
+    const cacheKey = `${deviceId}-${grouping}`;
+    const cached = telemetryCache.get(cacheKey);
+    return cached?.data ?? null;
+  }
+  
   // Check rate limiting cache
   const cacheKey = `${deviceId}-${grouping}`;
   const cached = telemetryCache.get(cacheKey);
-  const now = Date.now();
   
   if (cached && (now - cached.timestamp) < TELEMETRY_MIN_INTERVAL) {
     const remainingSecs = Math.ceil((TELEMETRY_MIN_INTERVAL - (now - cached.timestamp)) / 1000);
@@ -1421,8 +1436,20 @@ export async function fetchSmartMeterTelemetry(
     if (data.errors && data.errors.length > 0) {
       const errorMessages = data.errors.map(e => e.message).join(', ');
       console.error('[Energy API] GraphQL telemetry errors:', errorMessages);
-      console.error('[Energy API] Full error details:', JSON.stringify(data.errors, null, 2));
-      return null;
+      
+      // Check for rate limit error
+      const isRateLimited = data.errors.some(e => 
+        e.message?.toLowerCase().includes('too many requests') ||
+        (e as any).extensions?.errorCode === 'KT-CT-1199'
+      );
+      
+      if (isRateLimited) {
+        console.log('[Energy API] Rate limited - activating backoff period');
+        rateLimitedUntil = Date.now() + RATE_LIMIT_BACKOFF;
+      }
+      
+      // Return cached data if available
+      return cached?.data ?? null;
     }
     
     const telemetry = data.data?.smartMeterTelemetry;
@@ -1474,12 +1501,22 @@ export async function fetchTodayHalfHourlyConsumption(
   console.log('[Energy API] ========== FETCH TODAY HALF-HOURLY CONSUMPTION ==========');
   console.log('[Energy API] Device ID:', deviceId);
   
+  const currentTime = Date.now();
+  
+  // Check if we're in rate limit backoff period
+  if (rateLimitedUntil > currentTime) {
+    const remainingMins = Math.ceil((rateLimitedUntil - currentTime) / 60000);
+    console.log(`[Energy API] Rate limit backoff active - ${remainingMins} minutes remaining`);
+    const cacheKey = `${deviceId}-today`;
+    const cached = todayConsumptionCache.get(cacheKey);
+    return cached?.data ?? [];
+  }
+  
   // Check rate limiting cache
   const now = new Date();
   const dateKey = now.toISOString().split('T')[0]; // YYYY-MM-DD
   const cacheKey = `${deviceId}-today`;
   const cached = todayConsumptionCache.get(cacheKey);
-  const currentTime = Date.now();
   
   // Return cached data if within rate limit AND same day
   if (cached && cached.dateKey === dateKey && (currentTime - cached.timestamp) < TODAY_CONSUMPTION_MIN_INTERVAL) {
@@ -1540,7 +1577,23 @@ export async function fetchTodayHalfHourlyConsumption(
     if (data.errors && data.errors.length > 0) {
       const errorMessages = data.errors.map(e => e.message).join(', ');
       console.error('[Energy API] GraphQL today consumption errors:', errorMessages);
-      console.error('[Energy API] Full error details:', JSON.stringify(data.errors, null, 2));
+      
+      // Check for rate limit error
+      const isRateLimited = data.errors.some(e => 
+        e.message?.toLowerCase().includes('too many requests') ||
+        (e as any).extensions?.errorCode === 'KT-CT-1199'
+      );
+      
+      if (isRateLimited) {
+        console.log('[Energy API] Rate limited - activating backoff period');
+        rateLimitedUntil = Date.now() + RATE_LIMIT_BACKOFF;
+      }
+      
+      // Return cached data if available and from today
+      if (cached && cached.dateKey === dateKey) {
+        console.log('[Energy API] Returning cached data due to API error');
+        return cached.data;
+      }
       return [];
     }
     

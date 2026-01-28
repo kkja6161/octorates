@@ -40,13 +40,14 @@ export default function FluxDetailScreen() {
         return data;
       } catch (error) {
         console.error('[FluxDetail] Error fetching consumption:', error);
-        throw error;
+        return [];
       }
     },
     enabled: !!meterDeviceId && !!apiKey,
-    refetchInterval: 10 * 60 * 1000, // 10 minutes to respect API rate limits
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    retry: 1, // Reduce retries to avoid rate limiting
+    refetchInterval: 15 * 60 * 1000, // 15 minutes - conservative to respect API rate limits
+    staleTime: 10 * 60 * 1000, // 10 minutes - matches API cache interval
+    retry: false, // Don't retry - the API service handles caching/rate limiting
+    refetchOnWindowFocus: false, // Don't refetch on focus to reduce API calls
   });
 
   const chartData = useMemo((): UsageCostDataPoint[] => {
