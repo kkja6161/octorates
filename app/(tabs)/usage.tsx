@@ -17,11 +17,11 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Zap, Flame, TrendingDown, TrendingUp, AlertCircle, X, RefreshCw, ChevronRight, ChevronLeft, Info, Calendar, Settings2 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useConsumption } from '@/providers/ConsumptionProvider';
+import { useConsumption, ELECTRICITY_COMPARISON_TARIFFS, GAS_COMPARISON_TARIFFS } from '@/providers/ConsumptionProvider';
 import { useComparisonRate } from '@/hooks/useComparisonRate';
 import { useColors } from '@/constants/colors';
 import { useTheme } from '@/providers/ThemeProvider';
-import { DailyConsumption } from '@/types/energy';
+import { DailyConsumption, HistoricalProduct, ComparisonAvailability } from '@/types/energy';
 import { getTariffDisplayName } from '@/utils/tariffNames';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -62,6 +62,10 @@ export default function UsageScreen() {
     setLastElectricityBillDate,
     setLastGasBillDate,
     setSameBillDates,
+    availableElectricityProducts,
+    availableGasProducts,
+    setElectricityComparisonTariff,
+    setGasComparisonTariff,
   } = useConsumption();
   
   const { comparisonElectricityTariffName, comparisonGasTariffName } = useComparisonRate();
@@ -1091,6 +1095,14 @@ export default function UsageScreen() {
           fuelType={comparisonWarningType}
           comparisonTariffName={comparisonWarningType === 'electricity' ? comparisonElectricityTariffName : comparisonGasTariffName}
           availability={comparisonWarningType === 'electricity' ? electricityComparisonAvailability : gasComparisonAvailability}
+          availableProducts={comparisonWarningType === 'electricity' ? availableElectricityProducts : availableGasProducts}
+          onSelectAlternativeTariff={(code, _name) => {
+            if (comparisonWarningType === 'electricity') {
+              setElectricityComparisonTariff(code);
+            } else {
+              setGasComparisonTariff(code);
+            }
+          }}
         />
 
         <BillDateModal
@@ -1125,17 +1137,64 @@ function ComparisonWarningModal({
   fuelType,
   comparisonTariffName,
   availability,
+  availableProducts,
+  onSelectAlternativeTariff,
 }: {
   visible: boolean;
   onClose: () => void;
   fuelType: 'electricity' | 'gas';
   comparisonTariffName: string;
-  availability: { isAvailable: boolean; availableFrom: Date | null; missingPeriods: { from: Date; to: Date }[] };
+  availability: ComparisonAvailability;
+  availableProducts: HistoricalProduct[];
+  onSelectAlternativeTariff: (tariffCode: string, tariffName: string) => void;
 }) {
   const { isDark } = useTheme();
   const colors = useColors(isDark);
+  const [showTariffPicker, setShowTariffPicker] = useState(false);
+  
   const formatDate = (date: Date) => {
     return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  };
+
+  const getAvailableTariffsForPeriod = useCallback((periodFrom: Date, periodTo: Date) => {
+    const staticTariffs = fuelType === 'electricity' ? ELECTRICITY_COMPARISON_TARIFFS : GAS_COMPARISON_TARIFFS;
+    const productTariffs: { code: string; displayName: string; description: string }[] = [];
+    
+    availableProducts.forEach(product => {
+      const productStart = product.availableFrom || new Date(0);
+      const productEnd = product.availableTo || new Date();
+      
+      if (productStart <= periodTo && productEnd >= periodFrom) {
+        if (!staticTariffs.find(t => t.code === product.code)) {
+          productTariffs.push({
+            code: product.code,
+            displayName: product.displayName,
+            description: product.description,
+          });
+        }
+      }
+    });
+
+    const filteredStatic = staticTariffs.filter(tariff => {
+      if (tariff.availableFrom && tariff.availableTo) {
+        return tariff.availableFrom <= periodTo && tariff.availableTo >= periodFrom;
+      }
+      return true;
+    });
+
+    return [...filteredStatic.map(t => ({ code: t.code, displayName: t.displayName, description: t.description })), ...productTariffs];
+  }, [fuelType, availableProducts]);
+
+  const missingPeriodTariffs = useMemo(() => {
+    if (!availability.missingPeriods.length) return [];
+    const period = availability.missingPeriods[0];
+    return getAvailableTariffsForPeriod(period.from, period.to);
+  }, [availability.missingPeriods, getAvailableTariffsForPeriod]);
+
+  const handleSelectTariff = (code: string, name: string) => {
+    onSelectAlternativeTariff(code, name);
+    setShowTariffPicker(false);
+    onClose();
   };
 
   const styles = StyleSheet.create({
@@ -1151,7 +1210,8 @@ function ComparisonWarningModal({
       borderRadius: 20,
       padding: 24,
       width: '100%',
-      maxWidth: 360,
+      maxWidth: 400,
+      maxHeight: '85%',
       gap: 16,
     },
     warningModalHeader: {
@@ -1214,6 +1274,49 @@ function ComparisonWarningModal({
       fontWeight: '600' as const,
       color: colors.surface,
     },
+    selectTariffButton: {
+      backgroundColor: isDark ? '#3A4A3A' : '#ecfdf5',
+      borderWidth: 1,
+      borderColor: '#10b981',
+      paddingVertical: 14,
+      borderRadius: 12,
+      alignItems: 'center',
+      flexDirection: 'row',
+      justifyContent: 'center',
+      gap: 8,
+    },
+    selectTariffButtonText: {
+      fontSize: 15,
+      fontWeight: '600' as const,
+      color: '#10b981',
+    },
+    tariffPickerContainer: {
+      gap: 8,
+      maxHeight: 280,
+    },
+    tariffPickerTitle: {
+      fontSize: 14,
+      fontWeight: '600' as const,
+      color: colors.text.primary,
+      marginBottom: 4,
+    },
+    tariffOption: {
+      backgroundColor: colors.background,
+      borderRadius: 10,
+      padding: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    tariffOptionName: {
+      fontSize: 14,
+      fontWeight: '600' as const,
+      color: colors.text.primary,
+    },
+    tariffOptionDescription: {
+      fontSize: 12,
+      color: colors.text.secondary,
+      marginTop: 2,
+    },
   });
 
   return (
@@ -1253,13 +1356,45 @@ function ComparisonWarningModal({
             </View>
           )}
 
-          <Text style={styles.warningModalNote}>
-            For periods where the comparison tariff was not available, savings calculations use the most recent available rate and are therefore estimates.
-          </Text>
+          {!showTariffPicker ? (
+            <>
+              <Text style={styles.warningModalNote}>
+                For periods where the comparison tariff was not available, savings calculations use the most recent available rate and are therefore estimates.
+              </Text>
 
-          <Pressable style={styles.warningModalButton} onPress={onClose}>
-            <Text style={styles.warningModalButtonText}>Got it</Text>
-          </Pressable>
+              {availability.missingPeriods.length > 0 && missingPeriodTariffs.length > 0 && (
+                <Pressable 
+                  style={styles.selectTariffButton} 
+                  onPress={() => setShowTariffPicker(true)}
+                >
+                  <Calendar size={18} color="#10b981" />
+                  <Text style={styles.selectTariffButtonText}>Select alternative tariff for this period</Text>
+                </Pressable>
+              )}
+
+              <Pressable style={styles.warningModalButton} onPress={onClose}>
+                <Text style={styles.warningModalButtonText}>Got it</Text>
+              </Pressable>
+            </>
+          ) : (
+            <ScrollView style={styles.tariffPickerContainer} showsVerticalScrollIndicator={false}>
+              <Text style={styles.tariffPickerTitle}>Select a tariff for the missing period:</Text>
+              {missingPeriodTariffs.map((tariff, index) => (
+                <Pressable
+                  key={`${tariff.code}-${index}`}
+                  style={styles.tariffOption}
+                  onPress={() => handleSelectTariff(tariff.code, tariff.displayName)}
+                >
+                  <Text style={styles.tariffOptionName}>{tariff.displayName}</Text>
+                  {tariff.description && (
+                    <Text style={styles.tariffOptionDescription} numberOfLines={2}>
+                      {tariff.description}
+                    </Text>
+                  )}
+                </Pressable>
+              ))}
+            </ScrollView>
+          )}
         </Pressable>
       </Pressable>
     </Modal>

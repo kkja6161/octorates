@@ -4,7 +4,7 @@ import { useState, useMemo, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { fetchConsumption, fetchEnergyRates, processRates, fetchFlexibleRate, fetchComparisonTariffRates, fetchGasTrackerRates, fetchStandingCharge, fetchAccountData, processAccountData, fetchMeterDeviceId, fetchSmartMeterTelemetry, MeterDeviceInfo, SmartMeterTelemetryEntry, fetchAllAvailableProducts } from '@/services/energyApi';
-import { DailyConsumption, ConsumptionEntry, ProcessedRate, ConsumptionEntryWithRate, ProcessedAccountData, ProcessedTariffAgreement, ComparisonTariffOption, HistoricalProduct } from '@/types/energy';
+import { DailyConsumption, ConsumptionEntry, ProcessedRate, ConsumptionEntryWithRate, ProcessedAccountData, ProcessedTariffAgreement, ComparisonTariffOption, HistoricalProduct, PeriodTariffOverride, ComparisonAvailability } from '@/types/energy';
 import { DEFAULT_GSP_REGION, DEFAULT_PRODUCT_CODE, GAS_TRACKER_PRODUCT } from '@/constants/octopus';
 
 function roundHalfToEven(value: number): number {
@@ -36,6 +36,7 @@ const STORAGE_KEY_AVAILABLE_PRODUCTS = '@consumption:available_products';
 const STORAGE_KEY_LAST_ELECTRICITY_BILL_DATE = '@consumption:last_electricity_bill_date';
 const STORAGE_KEY_LAST_GAS_BILL_DATE = '@consumption:last_gas_bill_date';
 const STORAGE_KEY_SAME_BILL_DATES = '@consumption:same_bill_dates';
+const STORAGE_KEY_PERIOD_TARIFF_OVERRIDES = '@consumption:period_tariff_overrides';
 
 const FLEXIBLE_TARIFF_CODE = 'VAR-22-11-01';
 const DEFAULT_GAS_CV = 39.0;
@@ -50,11 +51,7 @@ interface TariffPeriodRates {
   standingCharge: number | null;
 }
 
-interface ComparisonAvailability {
-  isAvailable: boolean;
-  availableFrom: Date | null;
-  missingPeriods: { from: Date; to: Date }[];
-}
+
 
 export const ELECTRICITY_COMPARISON_TARIFFS: ComparisonTariffOption[] = [
   { code: 'VAR-24-05-16', displayName: 'Flexible Octopus (May 2024)', description: 'Current variable rate tariff with standard pricing', hasGas: true },
@@ -110,6 +107,7 @@ export const [ConsumptionProvider, useConsumption] = createContextHook(() => {
   const [liveDemand, setLiveDemand] = useState<number | null>(null);
   const [liveDemandUpdatedAt, setLiveDemandUpdatedAt] = useState<Date | null>(null);
   const [availableProducts, setAvailableProducts] = useState<HistoricalProduct[]>([]);
+  const [periodTariffOverrides, setPeriodTariffOverridesState] = useState<PeriodTariffOverride[]>([]);
 
   const selectedRegion = accountData?.region || DEFAULT_GSP_REGION;
   const electricityMpan = accountData?.electricity?.mpan || null;

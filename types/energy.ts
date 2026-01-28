@@ -356,3 +356,17 @@ export interface ProcessedForecastRate {
   date: string;
   validFrom: Date;
 }
+
+export interface PeriodTariffOverride {
+  periodFrom: Date;
+  periodTo: Date;
+  tariffCode: string;
+  tariffDisplayName: string;
+  fuelType: 'electricity' | 'gas';
+}
+
+export interface ComparisonAvailability {
+  isAvailable: boolean;
+  availableFrom: Date | null;
+  missingPeriods: { from: Date; to: Date }[];
+}
