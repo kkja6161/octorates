@@ -12,10 +12,10 @@ import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { Check, ChevronDown, ChevronUp, Clock, Flame, Calendar, DollarSign } from 'lucide-react-native';
 
-import { useConsumption, GAS_COMPARISON_TARIFFS } from '@/providers/ConsumptionProvider';
+import { useConsumption } from '@/providers/ConsumptionProvider';
 import { fetchComparisonTariffRates, fetchStandingCharge, fetchEnergyRates, fetchGasTrackerRates, processRates } from '@/services/energyApi';
 import Colors from '@/constants/colors';
-import { ProcessedRate, ProcessedTariffAgreement } from '@/types/energy';
+import { ProcessedRate, ProcessedTariffAgreement, HistoricalProduct } from '@/types/energy';
 
 type SimplifiedCategory = 'Tracker' | 'Flexible' | 'Fixed' | 'Other';
 
@@ -29,6 +29,11 @@ interface RatePeriod {
 interface HistoricalTariffGroup {
   category: SimplifiedCategory;
   agreements: ProcessedTariffAgreement[];
+}
+
+interface AvailableProductGroup {
+  category: SimplifiedCategory;
+  products: HistoricalProduct[];
 }
 
 function getSimplifiedCategory(code: string, displayName: string): SimplifiedCategory {
@@ -59,6 +64,33 @@ function groupAgreementsByCategory(agreements: ProcessedTariffAgreement[]): Hist
     if (catAgreements.length > 0) {
       catAgreements.sort((a, b) => b.validFrom.getTime() - a.validFrom.getTime());
       result.push({ category: cat, agreements: catAgreements });
+    }
+  });
+  
+  return result;
+}
+
+function groupProductsByCategory(products: HistoricalProduct[]): AvailableProductGroup[] {
+  const categoryOrder: SimplifiedCategory[] = ['Tracker', 'Flexible', 'Fixed', 'Other'];
+  const groups = new Map<SimplifiedCategory, HistoricalProduct[]>();
+  
+  categoryOrder.forEach(cat => groups.set(cat, []));
+  
+  products.forEach(product => {
+    const category = getSimplifiedCategory(product.code, product.displayName);
+    groups.get(category)!.push(product);
+  });
+  
+  const result: AvailableProductGroup[] = [];
+  categoryOrder.forEach(cat => {
+    const catProducts = groups.get(cat)!;
+    if (catProducts.length > 0) {
+      catProducts.sort((a, b) => {
+        const dateA = a.availableFrom?.getTime() ?? 0;
+        const dateB = b.availableFrom?.getTime() ?? 0;
+        return dateB - dateA;
+      });
+      result.push({ category: cat, products: catProducts });
     }
   });
   
@@ -334,30 +366,30 @@ function HistoricalTariffItem({
   );
 }
 
-function OtherTariffItem({
-  tariff,
+function AvailableProductItem({
+  product,
   isSelected,
   onSelect,
   region,
 }: {
-  tariff: { code: string; displayName: string; description: string };
+  product: HistoricalProduct;
   isSelected: boolean;
   onSelect: () => void;
   region: string;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const isTracker = tariff.code.toUpperCase().includes('SILVER') || tariff.code.toUpperCase().includes('TRACKER');
+  const isTracker = product.isTracker;
 
   const ratesQuery = useQuery({
-    queryKey: ['gas-comparison-tariff-rates', tariff.code, region],
-    queryFn: () => fetchComparisonTariffRates(region, tariff.code, 'gas'),
+    queryKey: ['gas-comparison-tariff-rates', product.code, region],
+    queryFn: () => fetchComparisonTariffRates(region, product.code, 'gas'),
     enabled: expanded,
     staleTime: 60 * 60 * 1000,
   });
 
   const standingChargeQuery = useQuery({
-    queryKey: ['gas-comparison-standing-charge', tariff.code, region],
-    queryFn: () => fetchStandingCharge(tariff.code, region, 'gas'),
+    queryKey: ['gas-comparison-standing-charge', product.code, region],
+    queryFn: () => fetchStandingCharge(product.code, region, 'gas'),
     enabled: expanded,
     staleTime: 60 * 60 * 1000,
   });
@@ -384,16 +416,43 @@ function OtherTariffItem({
     });
   };
 
+  const availabilityText = useMemo(() => {
+    if (!product.availableFrom && !product.availableTo) return null;
+    const from = product.availableFrom ? formatDate(product.availableFrom) : 'Unknown';
+    const to = product.availableTo ? formatDate(product.availableTo) : 'Present';
+    return `${from} → ${to}`;
+  }, [product.availableFrom, product.availableTo]);
+
   return (
     <View style={[styles.tariffItem, isSelected && styles.listItemSelected]}>
       <Pressable style={styles.tariffItemHeader} onPress={onSelect}>
         <View style={styles.tariffItemLeft}>
           <Text style={[styles.tariffItemTitle, isSelected && styles.listItemTextSelected]}>
-            {tariff.displayName}
+            {product.displayName}
           </Text>
-          <Text style={styles.tariffItemDescription} numberOfLines={2}>
-            {tariff.description}
-          </Text>
+          {product.description ? (
+            <Text style={styles.tariffItemDescription} numberOfLines={2}>
+              {product.description}
+            </Text>
+          ) : null}
+          {availabilityText && (
+            <View style={styles.tariffDateRow}>
+              <Calendar size={12} color={Colors.text.secondary} />
+              <Text style={styles.tariffDateText}>{availabilityText}</Text>
+            </View>
+          )}
+          <View style={styles.tariffBadges}>
+            {product.isVariable && (
+              <View style={styles.variableBadge}>
+                <Text style={styles.badgeText}>{isTracker ? 'Daily' : 'Variable'}</Text>
+              </View>
+            )}
+            {product.isGreen && (
+              <View style={[styles.activeBadge, { backgroundColor: '#10b981' }]}>
+                <Text style={styles.badgeText}>Green</Text>
+              </View>
+            )}
+          </View>
         </View>
         <View style={styles.tariffItemRight}>
           {isSelected && (
@@ -423,7 +482,7 @@ function OtherTariffItem({
               <Text style={styles.loadingText}>Loading rates...</Text>
             </View>
           ) : !displayRates || displayRates.length === 0 ? (
-            <Text style={styles.noRatesText}>Rate data not available</Text>
+            <Text style={styles.noRatesText}>Rate data not available for your region</Text>
           ) : isTracker ? (
             <>
               <Text style={styles.ratesTitle}>Today&apos;s Tracker Rate</Text>
@@ -521,6 +580,8 @@ export default function GasComparisonScreen() {
     selectedRegion,
     gasAgreements,
     movedInAt,
+    availableGasProducts,
+    isLoadingProducts,
   } = useConsumption();
 
   const historicalGroups = useMemo(() => {
@@ -531,9 +592,10 @@ export default function GasComparisonScreen() {
     return new Set(gasAgreements.map(a => a.productCode));
   }, [gasAgreements]);
 
-  const otherTariffs = useMemo(() => {
-    return GAS_COMPARISON_TARIFFS.filter(t => !usedProductCodes.has(t.code));
-  }, [usedProductCodes]);
+  const availableProductGroups = useMemo(() => {
+    const filteredProducts = availableGasProducts.filter(p => !usedProductCodes.has(p.code));
+    return groupProductsByCategory(filteredProducts);
+  }, [availableGasProducts, usedProductCodes]);
 
   const handleSelectTariff = (code: string) => {
     setGasComparisonTariff(code);
@@ -572,17 +634,28 @@ export default function GasComparisonScreen() {
           </View>
         )}
         
-        {otherTariffs.length > 0 && (
+        {availableProductGroups.length > 0 && (
           <View style={styles.sectionContainer}>
             <Text style={styles.sectionTitle}>Other Available Tariffs</Text>
-            {otherTariffs.map((tariff) => (
-              <OtherTariffItem
-                key={tariff.code}
-                tariff={tariff}
-                isSelected={gasComparisonTariff === tariff.code}
-                onSelect={() => handleSelectTariff(tariff.code)}
-                region={selectedRegion}
-              />
+            {isLoadingProducts && (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="small" color={Colors.gasColor} />
+                <Text style={styles.loadingText}>Loading available tariffs...</Text>
+              </View>
+            )}
+            {availableProductGroups.map((group) => (
+              <View key={group.category} style={styles.groupContainer}>
+                <Text style={styles.groupTitle}>{group.category}</Text>
+                {group.products.map((product) => (
+                  <AvailableProductItem
+                    key={product.code}
+                    product={product}
+                    isSelected={gasComparisonTariff === product.code}
+                    onSelect={() => handleSelectTariff(product.code)}
+                    region={selectedRegion}
+                  />
+                ))}
+              </View>
             ))}
           </View>
         )}

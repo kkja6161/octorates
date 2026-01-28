@@ -3,8 +3,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useMemo, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { fetchConsumption, fetchEnergyRates, processRates, fetchFlexibleRate, fetchComparisonTariffRates, fetchGasTrackerRates, fetchStandingCharge, fetchAccountData, processAccountData, fetchMeterDeviceId, fetchSmartMeterTelemetry, MeterDeviceInfo, SmartMeterTelemetryEntry } from '@/services/energyApi';
-import { DailyConsumption, ConsumptionEntry, ProcessedRate, ConsumptionEntryWithRate, ProcessedAccountData, ProcessedTariffAgreement, ComparisonTariffOption } from '@/types/energy';
+import { fetchConsumption, fetchEnergyRates, processRates, fetchFlexibleRate, fetchComparisonTariffRates, fetchGasTrackerRates, fetchStandingCharge, fetchAccountData, processAccountData, fetchMeterDeviceId, fetchSmartMeterTelemetry, MeterDeviceInfo, SmartMeterTelemetryEntry, fetchAllAvailableProducts } from '@/services/energyApi';
+import { DailyConsumption, ConsumptionEntry, ProcessedRate, ConsumptionEntryWithRate, ProcessedAccountData, ProcessedTariffAgreement, ComparisonTariffOption, HistoricalProduct } from '@/types/energy';
 import { DEFAULT_GSP_REGION, DEFAULT_PRODUCT_CODE, GAS_TRACKER_PRODUCT } from '@/constants/octopus';
 
 function roundHalfToEven(value: number): number {
@@ -32,6 +32,7 @@ const STORAGE_KEY_GAS_CV = '@consumption:gas_cv';
 const STORAGE_KEY_TUTORIAL_COMPLETED = '@tutorial:completed_v2';
 const STORAGE_KEY_SHOW_NET_FLUX = '@consumption:show_net_flux';
 const STORAGE_KEY_METER_DEVICE_ID = '@consumption:meter_device_id';
+const STORAGE_KEY_AVAILABLE_PRODUCTS = '@consumption:available_products';
 const STORAGE_KEY_LAST_ELECTRICITY_BILL_DATE = '@consumption:last_electricity_bill_date';
 const STORAGE_KEY_LAST_GAS_BILL_DATE = '@consumption:last_gas_bill_date';
 const STORAGE_KEY_SAME_BILL_DATES = '@consumption:same_bill_dates';
@@ -108,6 +109,7 @@ export const [ConsumptionProvider, useConsumption] = createContextHook(() => {
   const [meterDeviceInfo, setMeterDeviceInfo] = useState<MeterDeviceInfo | null>(null);
   const [liveDemand, setLiveDemand] = useState<number | null>(null);
   const [liveDemandUpdatedAt, setLiveDemandUpdatedAt] = useState<Date | null>(null);
+  const [availableProducts, setAvailableProducts] = useState<HistoricalProduct[]>([]);
 
   const selectedRegion = accountData?.region || DEFAULT_GSP_REGION;
   const electricityMpan = accountData?.electricity?.mpan || null;
@@ -300,6 +302,30 @@ export const [ConsumptionProvider, useConsumption] = createContextHook(() => {
         }
       }
       return null;
+    },
+    staleTime: Infinity,
+    gcTime: Infinity,
+  });
+
+  useQuery({
+    queryKey: ['stored-available-products'],
+    queryFn: async () => {
+      const stored = await AsyncStorage.getItem(STORAGE_KEY_AVAILABLE_PRODUCTS);
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored);
+          const products = parsed.map((p: HistoricalProduct & { availableFrom: string | null; availableTo: string | null }) => ({
+            ...p,
+            availableFrom: p.availableFrom ? new Date(p.availableFrom) : null,
+            availableTo: p.availableTo ? new Date(p.availableTo) : null,
+          }));
+          setAvailableProducts(products);
+          return products;
+        } catch {
+          await AsyncStorage.removeItem(STORAGE_KEY_AVAILABLE_PRODUCTS);
+        }
+      }
+      return [];
     },
     staleTime: Infinity,
     gcTime: Infinity,
@@ -501,6 +527,23 @@ export const [ConsumptionProvider, useConsumption] = createContextHook(() => {
       return deviceInfo;
     },
     enabled: !!accountNumber && !!apiKey && !meterDeviceInfo,
+    staleTime: 24 * 60 * 60 * 1000,
+    gcTime: 24 * 60 * 60 * 1000,
+  });
+
+  const availableProductsQuery = useQuery({
+    queryKey: ['available-products', movedInAt?.toISOString()],
+    queryFn: async () => {
+      if (!movedInAt) return [];
+      console.log('[ConsumptionProvider] Fetching available products since:', movedInAt);
+      const products = await fetchAllAvailableProducts(movedInAt);
+      if (products.length > 0) {
+        await AsyncStorage.setItem(STORAGE_KEY_AVAILABLE_PRODUCTS, JSON.stringify(products));
+        setAvailableProducts(products);
+      }
+      return products;
+    },
+    enabled: !!movedInAt && availableProducts.length === 0,
     staleTime: 24 * 60 * 60 * 1000,
     gcTime: 24 * 60 * 60 * 1000,
   });
@@ -1505,6 +1548,10 @@ export const [ConsumptionProvider, useConsumption] = createContextHook(() => {
     meterDeviceId: meterDeviceInfo?.deviceId || null,
     isLoadingTelemetry: smartMeterTelemetryQuery.isLoading,
     refetchTelemetry: smartMeterTelemetryQuery.refetch,
+    availableProducts,
+    availableElectricityProducts: availableProducts.filter(p => p.hasElectricity),
+    availableGasProducts: availableProducts.filter(p => p.hasGas),
+    isLoadingProducts: availableProductsQuery.isLoading,
     lastElectricityBillDate,
     lastGasBillDate,
     sameBillDates,

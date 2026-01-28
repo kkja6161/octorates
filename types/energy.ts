@@ -238,6 +238,24 @@ export interface ComparisonTariffOption {
   displayName: string;
   description: string;
   hasGas: boolean;
+  availableFrom?: Date | null;
+  availableTo?: Date | null;
+  isVariable?: boolean;
+  isTracker?: boolean;
+}
+
+// Historical product available for comparison
+export interface HistoricalProduct {
+  code: string;
+  displayName: string;
+  description: string;
+  availableFrom: Date | null;
+  availableTo: Date | null;
+  isVariable: boolean;
+  isTracker: boolean;
+  isGreen: boolean;
+  hasElectricity: boolean;
+  hasGas: boolean;
 }
 
 // Carbon Intensity API Types

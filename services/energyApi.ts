@@ -1,4 +1,4 @@
-import { EnergyRatesResponse, ProcessedRate, ProductsResponse, TariffInfo, ConsumptionResponse, StandingChargesResponse, AccountResponse, ProcessedAccountData, ProcessedTariffAgreement, CarbonIntensityResponse, GenerationMixResponse, GridStatusData, AgilePredictForecast, ProcessedForecastRate, ElexonFuelInstItem, ElexonGenerationData, ElexonGenerationEntry, ElexonFuelType } from '@/types/energy';
+import { EnergyRatesResponse, ProcessedRate, ProductsResponse, TariffInfo, ConsumptionResponse, StandingChargesResponse, AccountResponse, ProcessedAccountData, ProcessedTariffAgreement, CarbonIntensityResponse, GenerationMixResponse, GridStatusData, AgilePredictForecast, ProcessedForecastRate, ElexonFuelInstItem, ElexonGenerationData, ElexonGenerationEntry, ElexonFuelType, HistoricalProduct, Product } from '@/types/energy';
 import { DEFAULT_GSP_REGION, buildProductListUrl, buildFlexibleTariffUrl, buildGasTrackerTariffUrl, OCTOPUS_API_BASE, PRODUCT_CODE_MAPPING } from '@/constants/octopus';
 
 function normalizeProductCode(productCode: string): string {
@@ -1609,4 +1609,127 @@ export async function fetchProductDetails(productCode: string): Promise<ProductD
     console.log(`[Energy API] Error fetching product details:`, error);
     return null;
   }
+}
+
+export async function fetchHistoricalProducts(availableAtDate: Date): Promise<HistoricalProduct[]> {
+  console.log(`[Energy API] ========== FETCH HISTORICAL PRODUCTS ==========`);
+  console.log(`[Energy API] Available at date: ${availableAtDate.toISOString()}`);
+  
+  const allProducts: Product[] = [];
+  const dateParam = availableAtDate.toISOString();
+  
+  let nextUrl: string | null = `${OCTOPUS_API_BASE}/v1/products/?brand=OCTOPUS_ENERGY&available_at=${dateParam}`;
+  
+  try {
+    let pageCount = 0;
+    while (nextUrl) {
+      pageCount++;
+      console.log(`[Energy API] Fetching historical products page ${pageCount}...`);
+      
+      const response = await fetch(nextUrl);
+      
+      if (!response.ok) {
+        console.error('[Energy API] Failed to fetch historical products:', response.status);
+        break;
+      }
+      
+      const data: ProductsResponse = await response.json();
+      console.log(`[Energy API] Historical products page ${pageCount}: ${data.results.length} products`);
+      
+      allProducts.push(...data.results);
+      nextUrl = data.next;
+    }
+    
+    console.log(`[Energy API] Total historical products fetched: ${allProducts.length}`);
+    
+    const processedProducts: HistoricalProduct[] = allProducts
+      .filter(product => {
+        if (product.is_business || product.is_prepay || product.is_restricted) {
+          return false;
+        }
+        const upperCode = product.code.toUpperCase();
+        if (upperCode.includes('EXPORT') || upperCode.includes('OUTGOING')) {
+          return false;
+        }
+        return true;
+      })
+      .map(product => {
+        const upperCode = product.code.toUpperCase();
+        const isTracker = upperCode.includes('SILVER') || upperCode.includes('TRACKER') || product.is_tracker;
+        const isAgile = upperCode.includes('AGILE');
+        
+        const hasElectricity = product.links?.some(link => 
+          link.href.includes('electricity-tariffs')
+        ) ?? true;
+        
+        const hasGas = product.links?.some(link => 
+          link.href.includes('gas-tariffs')
+        ) ?? false;
+        
+        return {
+          code: product.code,
+          displayName: product.display_name || product.full_name,
+          description: product.description || '',
+          availableFrom: product.available_from ? new Date(product.available_from) : null,
+          availableTo: product.available_to ? new Date(product.available_to) : null,
+          isVariable: product.is_variable || isAgile || isTracker,
+          isTracker,
+          isGreen: product.is_green,
+          hasElectricity,
+          hasGas,
+        };
+      })
+      .sort((a, b) => {
+        const dateA = a.availableFrom?.getTime() ?? 0;
+        const dateB = b.availableFrom?.getTime() ?? 0;
+        return dateB - dateA;
+      });
+    
+    console.log(`[Energy API] Processed historical products: ${processedProducts.length}`);
+    return processedProducts;
+  } catch (error) {
+    console.error('[Energy API] Error fetching historical products:', error);
+    return [];
+  }
+}
+
+export async function fetchAllAvailableProducts(movedInDate: Date): Promise<HistoricalProduct[]> {
+  console.log(`[Energy API] ========== FETCH ALL AVAILABLE PRODUCTS ==========`);
+  console.log(`[Energy API] User moved in: ${movedInDate.toISOString()}`);
+  
+  const allProducts: Map<string, HistoricalProduct> = new Map();
+  const now = new Date();
+  
+  const currentProducts = await fetchHistoricalProducts(now);
+  currentProducts.forEach(p => allProducts.set(p.code, p));
+  console.log(`[Energy API] Current products: ${currentProducts.length}`);
+  
+  const historicalProducts = await fetchHistoricalProducts(movedInDate);
+  historicalProducts.forEach(p => {
+    if (!allProducts.has(p.code)) {
+      allProducts.set(p.code, p);
+    }
+  });
+  console.log(`[Energy API] After adding historical: ${allProducts.size}`);
+  
+  const yearsSinceMovedIn = (now.getTime() - movedInDate.getTime()) / (365.25 * 24 * 60 * 60 * 1000);
+  if (yearsSinceMovedIn > 1) {
+    const midDate = new Date(movedInDate.getTime() + (now.getTime() - movedInDate.getTime()) / 2);
+    const midProducts = await fetchHistoricalProducts(midDate);
+    midProducts.forEach(p => {
+      if (!allProducts.has(p.code)) {
+        allProducts.set(p.code, p);
+      }
+    });
+    console.log(`[Energy API] After adding mid-point: ${allProducts.size}`);
+  }
+  
+  const result = Array.from(allProducts.values()).sort((a, b) => {
+    const dateA = a.availableFrom?.getTime() ?? 0;
+    const dateB = b.availableFrom?.getTime() ?? 0;
+    return dateB - dateA;
+  });
+  
+  console.log(`[Energy API] Total unique products available to user: ${result.length}`);
+  return result;
 }
