@@ -1697,10 +1697,15 @@ export async function fetchHistoricalProducts(availableAtDate: Date): Promise<Hi
     
     const processedProducts: HistoricalProduct[] = allProducts
       .filter(product => {
-        if (product.is_business || product.is_prepay || product.is_restricted) {
+        if (product.is_business || product.is_prepay) {
           return false;
         }
         const upperCode = product.code.toUpperCase();
+        // Always include FIX tariffs for historical comparison, even if restricted
+        const isFixedTariff = upperCode.includes('FIX') && !upperCode.includes('FLEX');
+        if (product.is_restricted && !isFixedTariff) {
+          return false;
+        }
         if (upperCode.includes('EXPORT') || upperCode.includes('OUTGOING')) {
           return false;
         }

@@ -1159,12 +1159,29 @@ function ComparisonWarningModal({
   const getAvailableTariffsForPeriod = useCallback((periodFrom: Date, periodTo: Date) => {
     const staticTariffs = fuelType === 'electricity' ? ELECTRICITY_COMPARISON_TARIFFS : GAS_COMPARISON_TARIFFS;
     const productTariffs: { code: string; displayName: string; description: string }[] = [];
+    const fixedTariffs: { code: string; displayName: string; description: string }[] = [];
     
     availableProducts.forEach(product => {
       const productStart = product.availableFrom || new Date(0);
       const productEnd = product.availableTo || new Date();
+      const upperCode = product.code.toUpperCase();
+      const isFixedTariff = upperCode.includes('FIX') && !upperCode.includes('FLEX');
       
-      if (productStart <= periodTo && productEnd >= periodFrom) {
+      // Always include FIX tariffs that were available at any point during the period
+      // Be more lenient with date matching for fixed tariffs
+      if (isFixedTariff) {
+        // Include fixed tariffs if they overlap with the period at all
+        // or if they were available before/during the period
+        if (productStart <= periodTo) {
+          if (!staticTariffs.find(t => t.code === product.code)) {
+            fixedTariffs.push({
+              code: product.code,
+              displayName: product.displayName,
+              description: product.description || 'Fixed rate tariff',
+            });
+          }
+        }
+      } else if (productStart <= periodTo && productEnd >= periodFrom) {
         if (!staticTariffs.find(t => t.code === product.code)) {
           productTariffs.push({
             code: product.code,
@@ -1176,13 +1193,40 @@ function ComparisonWarningModal({
     });
 
     const filteredStatic = staticTariffs.filter(tariff => {
+      const upperCode = tariff.code.toUpperCase();
+      const isFixedTariff = upperCode.includes('FIX') && !upperCode.includes('FLEX');
+      
+      // Always include FIX tariffs from static list
+      if (isFixedTariff) {
+        return true;
+      }
+      
       if (tariff.availableFrom && tariff.availableTo) {
         return tariff.availableFrom <= periodTo && tariff.availableTo >= periodFrom;
       }
       return true;
     });
 
-    return [...filteredStatic.map(t => ({ code: t.code, displayName: t.displayName, description: t.description })), ...productTariffs];
+    // Sort fixed tariffs to appear first, then other tariffs
+    const allTariffs = [
+      ...filteredStatic.map(t => ({ code: t.code, displayName: t.displayName, description: t.description })),
+      ...fixedTariffs,
+      ...productTariffs
+    ];
+    
+    // Remove duplicates by code
+    const uniqueTariffs = allTariffs.filter((tariff, index, self) =>
+      index === self.findIndex(t => t.code === tariff.code)
+    );
+    
+    // Sort so FIX tariffs appear first
+    return uniqueTariffs.sort((a, b) => {
+      const aIsFix = a.code.toUpperCase().includes('FIX') && !a.code.toUpperCase().includes('FLEX');
+      const bIsFix = b.code.toUpperCase().includes('FIX') && !b.code.toUpperCase().includes('FLEX');
+      if (aIsFix && !bIsFix) return -1;
+      if (!aIsFix && bIsFix) return 1;
+      return a.displayName.localeCompare(b.displayName);
+    });
   }, [fuelType, availableProducts]);
 
   const missingPeriodTariffs = useMemo(() => {
