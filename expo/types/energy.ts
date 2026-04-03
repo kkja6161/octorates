@@ -370,3 +370,60 @@ export interface ComparisonAvailability {
   availableFrom: Date | null;
   missingPeriods: { from: Date; to: Date }[];
 }
+
+export interface ProductDetailTariffLink {
+  href: string;
+  method: string;
+  rel: string;
+}
+
+export interface ProductDetailPaymentMethod {
+  code: string;
+  standing_charge_exc_vat: number | null;
+  standing_charge_inc_vat: number | null;
+  online_discount_exc_vat: number;
+  online_discount_inc_vat: number;
+  dual_fuel_discount_exc_vat: number;
+  dual_fuel_discount_inc_vat: number;
+  exit_fees_exc_vat: number;
+  exit_fees_inc_vat: number;
+  exit_fees_type: string;
+  links: ProductDetailTariffLink[];
+}
+
+export interface ProductDetailRegion {
+  direct_debit_monthly?: ProductDetailPaymentMethod;
+  direct_debit_quarterly?: ProductDetailPaymentMethod;
+  prepayment?: ProductDetailPaymentMethod;
+}
+
+export interface ProductDetailResponse {
+  code: string;
+  full_name: string;
+  display_name: string;
+  description: string;
+  is_variable: boolean;
+  is_green: boolean;
+  is_tracker: boolean;
+  is_prepay: boolean;
+  is_business: boolean;
+  is_restricted: boolean;
+  brand: string;
+  available_from: string | null;
+  available_to: string | null;
+  single_register_electricity_tariffs?: Record<string, ProductDetailRegion>;
+  dual_register_electricity_tariffs?: Record<string, ProductDetailRegion>;
+  single_register_gas_tariffs?: Record<string, ProductDetailRegion>;
+}
+
+export interface RegionalTariffInfo {
+  tariffCode: string;
+  standingChargesUrl: string;
+  unitRatesUrl: string;
+}
+
+export interface DateRangedStandingCharge {
+  valueIncVat: number;
+  validFrom: Date;
+  validTo: Date | null;
+}

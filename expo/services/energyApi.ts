@@ -1,8 +1,98 @@
-import { EnergyRatesResponse, ProcessedRate, ProductsResponse, TariffInfo, ConsumptionResponse, StandingChargesResponse, AccountResponse, ProcessedAccountData, ProcessedTariffAgreement, CarbonIntensityResponse, GenerationMixResponse, GridStatusData, AgilePredictForecast, ProcessedForecastRate, ElexonFuelInstItem, ElexonGenerationData, ElexonGenerationEntry, ElexonFuelType, HistoricalProduct, Product } from '@/types/energy';
+import { EnergyRatesResponse, ProcessedRate, ProductsResponse, TariffInfo, ConsumptionResponse, StandingChargesResponse, AccountResponse, ProcessedAccountData, ProcessedTariffAgreement, CarbonIntensityResponse, GenerationMixResponse, GridStatusData, AgilePredictForecast, ProcessedForecastRate, ElexonFuelInstItem, ElexonGenerationData, ElexonGenerationEntry, ElexonFuelType, HistoricalProduct, Product, ProductDetailResponse, RegionalTariffInfo, DateRangedStandingCharge } from '@/types/energy';
 import { DEFAULT_GSP_REGION, buildProductListUrl, buildFlexibleTariffUrl, buildGasTrackerTariffUrl, OCTOPUS_API_BASE, PRODUCT_CODE_MAPPING } from '@/constants/octopus';
 
 function normalizeProductCode(productCode: string): string {
   return PRODUCT_CODE_MAPPING[productCode] || productCode;
+}
+
+const productDetailCache: Map<string, ProductDetailResponse> = new Map();
+
+export async function fetchProductDetailFull(productCode: string): Promise<ProductDetailResponse | null> {
+  const normalizedCode = normalizeProductCode(productCode);
+  const cached = productDetailCache.get(normalizedCode);
+  if (cached) {
+    console.log(`[Energy API] Using cached product detail for ${normalizedCode}`);
+    return cached;
+  }
+
+  const url = `${OCTOPUS_API_BASE}/v1/products/${normalizedCode}/`;
+  console.log(`[Energy API] Fetching full product detail from: ${url}`);
+
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      console.log(`[Energy API] Product detail not found for ${normalizedCode}: ${response.status}`);
+      return null;
+    }
+
+    const data: ProductDetailResponse = await response.json();
+    productDetailCache.set(normalizedCode, data);
+    console.log(`[Energy API] Cached product detail for ${normalizedCode}`);
+    return data;
+  } catch (error) {
+    console.log(`[Energy API] Error fetching product detail for ${normalizedCode}:`, error);
+    return null;
+  }
+}
+
+export function getRegionalTariffInfo(
+  productDetail: ProductDetailResponse,
+  region: string,
+  fuelType: 'electricity' | 'gas'
+): RegionalTariffInfo | null {
+  const regionKey = `_${region}`;
+
+  let regionData;
+  if (fuelType === 'electricity') {
+    regionData = productDetail.single_register_electricity_tariffs?.[regionKey]
+      ?? productDetail.dual_register_electricity_tariffs?.[regionKey];
+  } else {
+    regionData = productDetail.single_register_gas_tariffs?.[regionKey];
+  }
+
+  if (!regionData) {
+    console.log(`[Energy API] No regional data found for region ${region} (key ${regionKey}), fuel ${fuelType}`);
+    return null;
+  }
+
+  const paymentMethod = regionData.direct_debit_monthly ?? regionData.prepayment;
+  if (!paymentMethod) {
+    console.log(`[Energy API] No payment method found for region ${region}`);
+    return null;
+  }
+
+  const standingChargesLink = paymentMethod.links.find(l => l.rel === 'standing_charges');
+  const unitRatesLink = paymentMethod.links.find(l => l.rel === 'standard_unit_rates');
+
+  if (!standingChargesLink || !unitRatesLink) {
+    console.log(`[Energy API] Missing links for region ${region}. SC: ${!!standingChargesLink}, UR: ${!!unitRatesLink}`);
+    return null;
+  }
+
+  console.log(`[Energy API] Resolved regional tariff for ${productDetail.code} region ${region}: code=${paymentMethod.code}`);
+  console.log(`[Energy API]   Unit rates URL: ${unitRatesLink.href}`);
+  console.log(`[Energy API]   Standing charges URL: ${standingChargesLink.href}`);
+
+  return {
+    tariffCode: paymentMethod.code,
+    standingChargesUrl: standingChargesLink.href,
+    unitRatesUrl: unitRatesLink.href,
+  };
+}
+
+async function resolveStandingChargesUrl(
+  productCode: string,
+  region: string,
+  fuelType: 'electricity' | 'gas'
+): Promise<string> {
+  const productDetail = await fetchProductDetailFull(productCode);
+  if (productDetail) {
+    const regionalInfo = getRegionalTariffInfo(productDetail, region, fuelType);
+    if (regionalInfo) {
+      return regionalInfo.standingChargesUrl;
+    }
+  }
+  return buildSmartStandingChargeUrl(productCode, region, fuelType);
 }
 
 function getProductAndTariffCodes(productCode: string, fuelType: 'electricity' | 'gas', region: string, registerType: '1R' | '2R' = '1R'): { product: string; tariff: string } {
@@ -44,6 +134,57 @@ function buildSmartStandingChargeUrl(
   return url;
 }
 
+async function fetchRatesFromUrl(
+  url: string,
+  label: string,
+  periodFrom?: string,
+  periodTo?: string
+): Promise<EnergyRatesResponse | null> {
+  const allResults: EnergyRatesResponse['results'] = [];
+
+  const params = new URLSearchParams();
+  params.append('page_size', '17520');
+  if (periodFrom) params.append('period_from', periodFrom);
+  if (periodTo) params.append('period_to', periodTo);
+
+  let nextUrl: string | null = params.toString() ? `${url}?${params.toString()}` : url;
+
+  console.log(`[Energy API] Trying ${label}: ${nextUrl}`);
+
+  try {
+    let pageCount = 0;
+    while (nextUrl) {
+      pageCount++;
+      const response = await fetch(nextUrl);
+
+      if (!response.ok) {
+        console.log(`[Energy API] ${label} returned status ${response.status}`);
+        return null;
+      }
+
+      const data: EnergyRatesResponse = await response.json();
+      console.log(`[Energy API] ${label} - Page ${pageCount} received:`, data.results.length, 'rates');
+
+      allResults.push(...data.results);
+      nextUrl = data.next;
+    }
+
+    if (allResults.length === 0) {
+      return null;
+    }
+
+    return {
+      count: allResults.length,
+      next: null,
+      previous: null,
+      results: allResults,
+    };
+  } catch (error) {
+    console.log(`[Energy API] ${label} fetch error:`, error);
+    return null;
+  }
+}
+
 async function fetchRatesWithRegisterType(
   gspRegion: string,
   tariffCode: string,
@@ -53,52 +194,27 @@ async function fetchRatesWithRegisterType(
   periodTo?: string
 ): Promise<EnergyRatesResponse | null> {
   const url = buildSmartTariffUrl(tariffCode, gspRegion, fuelType, registerType);
-  
-  const allResults: EnergyRatesResponse['results'] = [];
-  
-  const params = new URLSearchParams();
-  params.append('page_size', '17520');
-  if (periodFrom) params.append('period_from', periodFrom);
-  if (periodTo) params.append('period_to', periodTo);
-  
-  let nextUrl: string | null = params.toString() ? `${url}?${params.toString()}` : url;
-  
-  console.log(`[Energy API] Trying ${registerType} tariff: ${nextUrl}`);
-  
-  try {
-    let pageCount = 0;
-    while (nextUrl) {
-      pageCount++;
-      const response = await fetch(nextUrl);
-      
-      if (!response.ok) {
-        console.log(`[Energy API] ${registerType} tariff returned status ${response.status}`);
-        return null;
-      }
-      
-      const data: EnergyRatesResponse = await response.json();
-      console.log(`[Energy API] ${registerType} tariff - Page ${pageCount} received:`, data.results.length, 'rates');
-      
-      allResults.push(...data.results);
-      nextUrl = data.next;
-    }
-    
-    if (allResults.length === 0) {
-      return null;
-    }
-    
-    return {
-      count: allResults.length,
-      next: null,
-      previous: null,
-      results: allResults,
-    };
-  } catch (error) {
-    console.log(`[Energy API] ${registerType} tariff fetch error:`, error);
-    return null;
-  }
+  return fetchRatesFromUrl(url, `${registerType} tariff`, periodFrom, periodTo);
 }
 
+async function fetchRatesWithResolvedUrl(
+  gspRegion: string,
+  productCode: string,
+  fuelType: 'electricity' | 'gas',
+  periodFrom?: string,
+  periodTo?: string
+): Promise<EnergyRatesResponse | null> {
+  const normalizedCode = normalizeProductCode(productCode);
+  const productDetail = await fetchProductDetailFull(normalizedCode);
+  if (!productDetail) return null;
+
+  const regionalInfo = getRegionalTariffInfo(productDetail, gspRegion, fuelType);
+  if (!regionalInfo) return null;
+
+  console.log(`[Energy API] Using resolved URL for ${normalizedCode} (${fuelType}): ${regionalInfo.unitRatesUrl}`);
+  return fetchRatesFromUrl(regionalInfo.unitRatesUrl, `resolved-${normalizedCode}`, periodFrom, periodTo);
+}
+  
 export async function fetchEnergyRates(
   gspRegion: string = DEFAULT_GSP_REGION,
   productCode?: string,
@@ -113,28 +229,35 @@ export async function fetchEnergyRates(
   console.log(`[Energy API] Product: ${tariffCode}, Region: ${gspRegion}`);
   console.log('[Energy API] Period from:', periodFrom);
   
-  // For electricity, try single register (1R) first, then two register (2R) for Eco 7 tariffs
+  // For electricity, try resolved product detail URL first, then pattern-based URLs
   if (fuelType === 'electricity') {
-    // Try 1R (single register / standard) first
-    let result = await fetchRatesWithRegisterType(gspRegion, tariffCode, fuelType, '1R', periodFrom, periodTo);
+    // Try resolved URL from product detail API first
+    let result = await fetchRatesWithResolvedUrl(gspRegion, tariffCode, fuelType, periodFrom, periodTo);
+    
+    if (result && result.results.length > 0) {
+      console.log(`[Energy API] Found ${result.results.length} rates via resolved product detail URL`);
+      return result;
+    }
+    
+    // Fallback: Try 1R (single register / standard)
+    console.log('[Energy API] Resolved URL failed, trying 1R pattern...');
+    result = await fetchRatesWithRegisterType(gspRegion, tariffCode, fuelType, '1R', periodFrom, periodTo);
     
     if (result && result.results.length > 0) {
       console.log(`[Energy API] Found ${result.results.length} rates with 1R (single register)`);
       return result;
     }
     
-    // Try 2R (two register / Eco 7) if 1R fails
+    // Fallback: Try 2R (two register / Eco 7)
     console.log('[Energy API] 1R failed, trying 2R (Eco 7 / two register)...');
     result = await fetchRatesWithRegisterType(gspRegion, tariffCode, fuelType, '2R', periodFrom, periodTo);
     
     if (result && result.results.length > 0) {
       console.log(`[Energy API] Found ${result.results.length} rates with 2R (two register)`);
-      // For Eco 7 tariffs, filter to get only the standard/day rate (not the off-peak/night rate)
-      // Standard rates typically have valid_from times that don't start at 00:30 or similar off-peak times
       return result;
     }
     
-    console.log('[Energy API] No rates found with either register type');
+    console.log('[Energy API] No rates found with any method');
     return {
       count: 0,
       next: null,
@@ -143,7 +266,14 @@ export async function fetchEnergyRates(
     };
   }
   
-  // For gas, use the smart URL builder
+  // For gas, try resolved URL first, then pattern-based
+  const resolvedGasResult = await fetchRatesWithResolvedUrl(gspRegion, tariffCode, fuelType, periodFrom, periodTo);
+  if (resolvedGasResult && resolvedGasResult.results.length > 0) {
+    console.log(`[Energy API] Found ${resolvedGasResult.results.length} gas rates via resolved product detail URL`);
+    return resolvedGasResult;
+  }
+  
+  console.log('[Energy API] Resolved gas URL failed, falling back to pattern-based URL...');
   const url = buildSmartTariffUrl(tariffCode, gspRegion, fuelType);
   
   console.log(`[Energy API] Built URL: ${url}`);
@@ -443,7 +573,7 @@ export async function fetchStandingCharge(
   periodFrom?: string,
   periodTo?: string
 ): Promise<number | null> {
-  const url = buildSmartStandingChargeUrl(productCode, gspRegion, fuelType);
+  const url = await resolveStandingChargesUrl(productCode, gspRegion, fuelType);
   
   const params = new URLSearchParams();
   if (periodFrom) params.append('period_from', periodFrom);
@@ -457,7 +587,6 @@ export async function fetchStandingCharge(
     const response = await fetch(fullUrl);
     
     if (!response.ok) {
-      // Silently handle 404s - product may not exist
       if (response.status === 404) {
         console.log(`[Energy API] Standing charge not available for ${productCode} (${fuelType})`);
         return null;
@@ -480,6 +609,89 @@ export async function fetchStandingCharge(
     console.log('[Energy API] Standing charge fetch error (non-critical):', error);
     return null;
   }
+}
+
+export async function fetchAllStandingCharges(
+  productCode: string,
+  gspRegion: string = DEFAULT_GSP_REGION,
+  fuelType: 'electricity' | 'gas' = 'electricity',
+  periodFrom?: string,
+  periodTo?: string
+): Promise<DateRangedStandingCharge[]> {
+  const url = await resolveStandingChargesUrl(productCode, gspRegion, fuelType);
+
+  const params = new URLSearchParams();
+  params.append('page_size', '1500');
+  if (periodFrom) params.append('period_from', periodFrom);
+  if (periodTo) params.append('period_to', periodTo);
+
+  const fullUrl = params.toString() ? `${url}?${params.toString()}` : url;
+
+  console.log(`[Energy API] Fetching all standing charges from: ${fullUrl}`);
+
+  try {
+    const allResults: DateRangedStandingCharge[] = [];
+    let nextUrl: string | null = fullUrl;
+
+    while (nextUrl) {
+      const response = await fetch(nextUrl);
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          console.log(`[Energy API] Standing charges not available for ${productCode} (${fuelType})`);
+          return [];
+        }
+        console.error('[Energy API] Failed to fetch standing charges:', response.status);
+        return allResults;
+      }
+
+      const data: StandingChargesResponse = await response.json();
+
+      if (data.results && data.results.length > 0) {
+        data.results.forEach(sc => {
+          allResults.push({
+            valueIncVat: sc.value_inc_vat,
+            validFrom: new Date(sc.valid_from),
+            validTo: sc.valid_to ? new Date(sc.valid_to) : null,
+          });
+        });
+      }
+
+      nextUrl = data.next;
+    }
+
+    allResults.sort((a, b) => a.validFrom.getTime() - b.validFrom.getTime());
+    console.log(`[Energy API] Fetched ${allResults.length} standing charge periods for ${productCode} (${fuelType})`);
+
+    if (allResults.length > 0) {
+      console.log(`[Energy API] Standing charge range: ${allResults[0].validFrom.toISOString()} to ${allResults[allResults.length - 1].validTo?.toISOString() ?? 'ongoing'}`);
+    }
+
+    return allResults;
+  } catch (error) {
+    console.log('[Energy API] Error fetching all standing charges (non-critical):', error);
+    return [];
+  }
+}
+
+export function findStandingChargeForDate(
+  charges: DateRangedStandingCharge[],
+  date: Date
+): number | null {
+  if (charges.length === 0) return null;
+
+  const match = charges.find(sc => {
+    const end = sc.validTo || new Date();
+    return sc.validFrom <= date && end > date;
+  });
+
+  if (match) return match.valueIncVat;
+
+  const sorted = [...charges].sort((a, b) => b.validFrom.getTime() - a.validFrom.getTime());
+  const mostRecentBefore = sorted.find(sc => sc.validFrom <= date);
+  if (mostRecentBefore) return mostRecentBefore.valueIncVat;
+
+  return sorted[sorted.length - 1]?.valueIncVat ?? null;
 }
 
 // Tariff code to friendly name mapping

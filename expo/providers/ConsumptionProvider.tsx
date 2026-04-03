@@ -3,8 +3,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useMemo, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { fetchConsumption, fetchEnergyRates, processRates, fetchFlexibleRate, fetchComparisonTariffRates, fetchGasTrackerRates, fetchStandingCharge, fetchAccountData, processAccountData, fetchMeterDeviceId, fetchSmartMeterTelemetry, MeterDeviceInfo, SmartMeterTelemetryEntry, fetchAllAvailableProducts } from '@/services/energyApi';
-import { DailyConsumption, ConsumptionEntry, ProcessedRate, ConsumptionEntryWithRate, ProcessedAccountData, ProcessedTariffAgreement, ComparisonTariffOption, HistoricalProduct, PeriodTariffOverride, ComparisonAvailability } from '@/types/energy';
+import { fetchConsumption, fetchEnergyRates, processRates, fetchFlexibleRate, fetchComparisonTariffRates, fetchGasTrackerRates, fetchStandingCharge, fetchAllStandingCharges, findStandingChargeForDate, fetchAccountData, processAccountData, fetchMeterDeviceId, fetchSmartMeterTelemetry, MeterDeviceInfo, SmartMeterTelemetryEntry, fetchAllAvailableProducts } from '@/services/energyApi';
+import { DailyConsumption, ConsumptionEntry, ProcessedRate, ConsumptionEntryWithRate, ProcessedAccountData, ProcessedTariffAgreement, ComparisonTariffOption, HistoricalProduct, PeriodTariffOverride, ComparisonAvailability, DateRangedStandingCharge } from '@/types/energy';
 import { DEFAULT_GSP_REGION, DEFAULT_PRODUCT_CODE, GAS_TRACKER_PRODUCT } from '@/constants/octopus';
 
 function roundHalfToEven(value: number): number {
@@ -49,6 +49,7 @@ interface TariffPeriodRates {
   validTo: Date | null;
   rates: ProcessedRate[];
   standingCharge: number | null;
+  allStandingCharges?: DateRangedStandingCharge[];
 }
 
 
@@ -1008,7 +1009,10 @@ export const [ConsumptionProvider, useConsumption] = createContextHook(() => {
           );
           
           const rates = processRates(data, false);
-          const standingCharge = await fetchStandingCharge(agreement.productCode, selectedRegion, 'electricity');
+          const [standingCharge, allSC] = await Promise.all([
+            fetchStandingCharge(agreement.productCode, selectedRegion, 'electricity', periodStart.toISOString(), periodEnd.toISOString()),
+            fetchAllStandingCharges(agreement.productCode, selectedRegion, 'electricity', periodStart.toISOString(), periodEnd.toISOString()),
+          ]);
           
           periodRates.push({
             productCode: agreement.productCode,
@@ -1016,9 +1020,10 @@ export const [ConsumptionProvider, useConsumption] = createContextHook(() => {
             validTo: agreement.validTo,
             rates,
             standingCharge,
+            allStandingCharges: allSC,
           });
           
-          console.log(`[ConsumptionProvider] Got ${rates.length} rates for ${agreement.productCode}`);
+          console.log(`[ConsumptionProvider] Got ${rates.length} rates, ${allSC.length} SC periods for ${agreement.productCode}`);
         } catch (error) {
           console.error(`[ConsumptionProvider] Failed to fetch rates for ${agreement.productCode}:`, error);
         }
@@ -1072,7 +1077,10 @@ export const [ConsumptionProvider, useConsumption] = createContextHook(() => {
           }
           
           const rates = processRates(data, true);
-          const standingCharge = await fetchStandingCharge(agreement.productCode, selectedRegion, 'gas');
+          const [standingCharge, allSC] = await Promise.all([
+            fetchStandingCharge(agreement.productCode, selectedRegion, 'gas', periodStart.toISOString(), periodEnd.toISOString()),
+            fetchAllStandingCharges(agreement.productCode, selectedRegion, 'gas', periodStart.toISOString(), periodEnd.toISOString()),
+          ]);
           
           periodRates.push({
             productCode: agreement.productCode,
@@ -1080,9 +1088,10 @@ export const [ConsumptionProvider, useConsumption] = createContextHook(() => {
             validTo: agreement.validTo,
             rates,
             standingCharge,
+            allStandingCharges: allSC,
           });
           
-          console.log(`[ConsumptionProvider] Got ${rates.length} gas rates for ${agreement.productCode}`);
+          console.log(`[ConsumptionProvider] Got ${rates.length} gas rates, ${allSC.length} SC periods for ${agreement.productCode}`);
         } catch (error) {
           console.error(`[ConsumptionProvider] Failed to fetch gas rates for ${agreement.productCode}:`, error);
         }
@@ -1187,27 +1196,30 @@ export const [ConsumptionProvider, useConsumption] = createContextHook(() => {
     return null;
   }, []);
 
-  // Find the correct tariff period and rate for a given date
   const findRateFromPeriods = useCallback((periods: TariffPeriodRates[], intervalStart: Date): { rate: ProcessedRate | null; standingCharge: number | null } => {
-    // Find the period that covers this interval
     const period = periods.find(p => {
       const periodEnd = p.validTo || new Date();
       return p.validFrom <= intervalStart && periodEnd > intervalStart;
     });
     
     if (!period) {
-      // Fallback to any period that has rates for this date
       for (const p of periods) {
         const rate = findBestRate(p.rates, intervalStart);
         if (rate) {
-          return { rate, standingCharge: p.standingCharge };
+          const sc = p.allStandingCharges && p.allStandingCharges.length > 0
+            ? findStandingChargeForDate(p.allStandingCharges, intervalStart)
+            : p.standingCharge;
+          return { rate, standingCharge: sc };
         }
       }
       return { rate: null, standingCharge: null };
     }
     
     const rate = findBestRate(period.rates, intervalStart);
-    return { rate, standingCharge: period.standingCharge };
+    const sc = period.allStandingCharges && period.allStandingCharges.length > 0
+      ? findStandingChargeForDate(period.allStandingCharges, intervalStart)
+      : period.standingCharge;
+    return { rate, standingCharge: sc };
   }, [findBestRate]);
 
   // Check if comparison tariff was available during the date range
