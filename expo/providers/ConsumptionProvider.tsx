@@ -542,13 +542,15 @@ export const [ConsumptionProvider, useConsumption] = createContextHook(() => {
         products = await fetchAllBrandProducts();
       }
       if (products.length > 0) {
+        const elecCount = products.filter(p => p.hasElectricity).length;
+        const gasCount = products.filter(p => p.hasGas).length;
+        console.log(`[ConsumptionProvider] Fetched ${products.length} products (elec: ${elecCount}, gas: ${gasCount})`);
         await AsyncStorage.setItem(STORAGE_KEY_AVAILABLE_PRODUCTS, JSON.stringify(products));
         setAvailableProducts(products);
       }
       return products;
     },
-    enabled: availableProducts.length === 0,
-    staleTime: 24 * 60 * 60 * 1000,
+    staleTime: 12 * 60 * 60 * 1000,
     gcTime: 24 * 60 * 60 * 1000,
   });
 

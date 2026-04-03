@@ -1928,13 +1928,8 @@ export async function fetchHistoricalProducts(availableAtDate: Date): Promise<Hi
         const isTracker = upperCode.includes('SILVER') || upperCode.includes('TRACKER') || product.is_tracker;
         const isAgile = upperCode.includes('AGILE');
         
-        const hasElectricity = product.links?.some(link => 
-          link.href.includes('electricity-tariffs')
-        ) ?? true;
-        
-        const hasGas = product.links?.some(link => 
-          link.href.includes('gas-tariffs')
-        ) ?? false;
+        const hasElectricity = determineHasElectricity(product);
+        const hasGas = determineHasGas(product);
         
         return {
           code: product.code,
@@ -1961,6 +1956,26 @@ export async function fetchHistoricalProducts(availableAtDate: Date): Promise<Hi
     console.error('[Energy API] Error fetching historical products:', error);
     return [];
   }
+}
+
+function determineHasElectricity(product: Product): boolean {
+  const hasElecLink = product.links?.some(link => link.href.includes('electricity-tariffs'));
+  if (hasElecLink) return true;
+  const upperCode = product.code.toUpperCase();
+  const gasOnlyPatterns = ['GAS-'];
+  if (gasOnlyPatterns.some(p => upperCode.startsWith(p))) return false;
+  return true;
+}
+
+function determineHasGas(product: Product): boolean {
+  const hasGasLink = product.links?.some(link => link.href.includes('gas-tariffs'));
+  if (hasGasLink) return true;
+  const upperCode = product.code.toUpperCase();
+  const elecOnlyPatterns = ['AGILE', 'GO-', 'COSY', 'INTELLI', 'FLUX', 'POWER-PACK', 'ZERO-'];
+  if (elecOnlyPatterns.some(p => upperCode.includes(p))) return false;
+  const gasEligiblePatterns = ['VAR-', 'FIX-', 'PREPAY-', 'SILVER', 'TRACKER', 'SMART-PREPAY'];
+  if (gasEligiblePatterns.some(p => upperCode.includes(p))) return true;
+  return false;
 }
 
 export async function fetchAllBrandProducts(): Promise<HistoricalProduct[]> {
@@ -2003,13 +2018,8 @@ export async function fetchAllBrandProducts(): Promise<HistoricalProduct[]> {
         const isTracker = upperCode.includes('SILVER') || upperCode.includes('TRACKER') || product.is_tracker;
         const isAgile = upperCode.includes('AGILE');
         
-        const hasElectricity = product.links?.some(link => 
-          link.href.includes('electricity-tariffs')
-        ) ?? true;
-        
-        const hasGas = product.links?.some(link => 
-          link.href.includes('gas-tariffs')
-        ) ?? false;
+        const hasElectricity = determineHasElectricity(product);
+        const hasGas = determineHasGas(product);
         
         return {
           code: product.code,
@@ -2030,7 +2040,7 @@ export async function fetchAllBrandProducts(): Promise<HistoricalProduct[]> {
         return dateB - dateA;
       });
     
-    console.log(`[Energy API] Processed brand products: ${processedProducts.length}`);
+    console.log(`[Energy API] Processed brand products: ${processedProducts.length} (elec: ${processedProducts.filter(p => p.hasElectricity).length}, gas: ${processedProducts.filter(p => p.hasGas).length})`);
     return processedProducts;
   } catch (error) {
     console.error('[Energy API] Error fetching brand products:', error);
