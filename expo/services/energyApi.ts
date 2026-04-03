@@ -1963,6 +1963,81 @@ export async function fetchHistoricalProducts(availableAtDate: Date): Promise<Hi
   }
 }
 
+export async function fetchAllBrandProducts(): Promise<HistoricalProduct[]> {
+  console.log(`[Energy API] ========== FETCH ALL BRAND PRODUCTS ==========`);
+  
+  const allProducts: Product[] = [];
+  let nextUrl: string | null = `${OCTOPUS_API_BASE}/v1/products/?brand=OCTOPUS_ENERGY`;
+  
+  try {
+    let pageCount = 0;
+    while (nextUrl) {
+      pageCount++;
+      console.log(`[Energy API] Fetching all brand products page ${pageCount}...`);
+      
+      const response = await fetch(nextUrl);
+      
+      if (!response.ok) {
+        console.error('[Energy API] Failed to fetch brand products:', response.status);
+        break;
+      }
+      
+      const data: ProductsResponse = await response.json();
+      console.log(`[Energy API] Brand products page ${pageCount}: ${data.results.length} products`);
+      
+      allProducts.push(...data.results);
+      nextUrl = data.next;
+    }
+    
+    console.log(`[Energy API] Total brand products fetched: ${allProducts.length}`);
+    
+    const processedProducts: HistoricalProduct[] = allProducts
+      .filter(product => {
+        if (product.is_business) return false;
+        const upperCode = product.code.toUpperCase();
+        if (upperCode.includes('EXPORT') || upperCode.includes('OUTGOING')) return false;
+        return true;
+      })
+      .map(product => {
+        const upperCode = product.code.toUpperCase();
+        const isTracker = upperCode.includes('SILVER') || upperCode.includes('TRACKER') || product.is_tracker;
+        const isAgile = upperCode.includes('AGILE');
+        
+        const hasElectricity = product.links?.some(link => 
+          link.href.includes('electricity-tariffs')
+        ) ?? true;
+        
+        const hasGas = product.links?.some(link => 
+          link.href.includes('gas-tariffs')
+        ) ?? false;
+        
+        return {
+          code: product.code,
+          displayName: product.display_name || product.full_name,
+          description: product.description || '',
+          availableFrom: product.available_from ? new Date(product.available_from) : null,
+          availableTo: product.available_to ? new Date(product.available_to) : null,
+          isVariable: product.is_variable || isAgile || isTracker,
+          isTracker,
+          isGreen: product.is_green,
+          hasElectricity,
+          hasGas,
+        };
+      })
+      .sort((a, b) => {
+        const dateA = a.availableFrom?.getTime() ?? 0;
+        const dateB = b.availableFrom?.getTime() ?? 0;
+        return dateB - dateA;
+      });
+    
+    console.log(`[Energy API] Processed brand products: ${processedProducts.length}`);
+    return processedProducts;
+  } catch (error) {
+    console.error('[Energy API] Error fetching brand products:', error);
+    return [];
+  }
+}
+
 export async function fetchAllAvailableProducts(movedInDate: Date): Promise<HistoricalProduct[]> {
   console.log(`[Energy API] ========== FETCH ALL AVAILABLE PRODUCTS ==========`);
   console.log(`[Energy API] User moved in: ${movedInDate.toISOString()}`);
@@ -1970,9 +2045,17 @@ export async function fetchAllAvailableProducts(movedInDate: Date): Promise<Hist
   const allProducts: Map<string, HistoricalProduct> = new Map();
   const now = new Date();
   
+  const brandProducts = await fetchAllBrandProducts();
+  brandProducts.forEach(p => allProducts.set(p.code, p));
+  console.log(`[Energy API] All brand products: ${brandProducts.length}`);
+  
   const currentProducts = await fetchHistoricalProducts(now);
-  currentProducts.forEach(p => allProducts.set(p.code, p));
-  console.log(`[Energy API] Current products: ${currentProducts.length}`);
+  currentProducts.forEach(p => {
+    if (!allProducts.has(p.code)) {
+      allProducts.set(p.code, p);
+    }
+  });
+  console.log(`[Energy API] After adding current date products: ${allProducts.size}`);
   
   const historicalProducts = await fetchHistoricalProducts(movedInDate);
   historicalProducts.forEach(p => {

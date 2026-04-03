@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useMemo, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { fetchConsumption, fetchEnergyRates, processRates, fetchFlexibleRate, fetchComparisonTariffRates, fetchGasTrackerRates, fetchStandingCharge, fetchAllStandingCharges, findStandingChargeForDate, fetchAccountData, processAccountData, fetchMeterDeviceId, fetchSmartMeterTelemetry, MeterDeviceInfo, SmartMeterTelemetryEntry, fetchAllAvailableProducts } from '@/services/energyApi';
+import { fetchConsumption, fetchEnergyRates, processRates, fetchFlexibleRate, fetchComparisonTariffRates, fetchGasTrackerRates, fetchStandingCharge, fetchAllStandingCharges, findStandingChargeForDate, fetchAccountData, processAccountData, fetchMeterDeviceId, fetchSmartMeterTelemetry, MeterDeviceInfo, SmartMeterTelemetryEntry, fetchAllAvailableProducts, fetchAllBrandProducts } from '@/services/energyApi';
 import { DailyConsumption, ConsumptionEntry, ProcessedRate, ConsumptionEntryWithRate, ProcessedAccountData, ProcessedTariffAgreement, ComparisonTariffOption, HistoricalProduct, PeriodTariffOverride, ComparisonAvailability, DateRangedStandingCharge } from '@/types/energy';
 import { DEFAULT_GSP_REGION, DEFAULT_PRODUCT_CODE, GAS_TRACKER_PRODUCT } from '@/constants/octopus';
 
@@ -533,16 +533,21 @@ export const [ConsumptionProvider, useConsumption] = createContextHook(() => {
   const availableProductsQuery = useQuery({
     queryKey: ['available-products', movedInAt?.toISOString()],
     queryFn: async () => {
-      if (!movedInAt) return [];
-      console.log('[ConsumptionProvider] Fetching available products since:', movedInAt);
-      const products = await fetchAllAvailableProducts(movedInAt);
+      let products: HistoricalProduct[] = [];
+      if (movedInAt) {
+        console.log('[ConsumptionProvider] Fetching available products since:', movedInAt);
+        products = await fetchAllAvailableProducts(movedInAt);
+      } else {
+        console.log('[ConsumptionProvider] No movedInAt, fetching all brand products');
+        products = await fetchAllBrandProducts();
+      }
       if (products.length > 0) {
         await AsyncStorage.setItem(STORAGE_KEY_AVAILABLE_PRODUCTS, JSON.stringify(products));
         setAvailableProducts(products);
       }
       return products;
     },
-    enabled: !!movedInAt && availableProducts.length === 0,
+    enabled: availableProducts.length === 0,
     staleTime: 24 * 60 * 60 * 1000,
     gcTime: 24 * 60 * 60 * 1000,
   });
