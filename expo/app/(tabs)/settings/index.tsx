@@ -41,6 +41,10 @@ export default function SettingsScreen() {
     setShowGas,
     showNetFlux,
     setShowNetFlux,
+    electricityAgreements,
+    gasAgreements,
+    availableElectricityProducts,
+    availableGasProducts,
   } = useConsumption();
   
   const {
@@ -131,6 +135,22 @@ export default function SettingsScreen() {
   };
   
   const selectedRegionName = GSP_REGIONS.find(r => r.code === selectedRegion)?.name || 'Unknown';
+
+  const getComparisonTariffDisplayName = (code: string, type: 'electricity' | 'gas'): string => {
+    const staticList = type === 'electricity' ? ELECTRICITY_COMPARISON_TARIFFS : GAS_COMPARISON_TARIFFS;
+    const staticMatch = staticList.find(t => t.code === code);
+    if (staticMatch) return staticMatch.displayName;
+
+    const agreements = type === 'electricity' ? electricityAgreements : gasAgreements;
+    const agreementMatch = agreements.find(a => a.productCode === code);
+    if (agreementMatch) return agreementMatch.displayName;
+
+    const products = type === 'electricity' ? availableElectricityProducts : availableGasProducts;
+    const productMatch = products.find(p => p.code === code);
+    if (productMatch) return productMatch.displayName;
+
+    return code;
+  };
 
   const formatTariffDate = (date: Date | null): string => {
     if (!date) return 'Present';
@@ -394,7 +414,7 @@ export default function SettingsScreen() {
                 <View style={styles.settingTextContainer}>
                   <Text style={styles.settingLabel}>Compare Against</Text>
                   <Text style={styles.settingValue} numberOfLines={1}>
-                    {getTariffDisplayName(ELECTRICITY_COMPARISON_TARIFFS.find(t => t.code === electricityComparisonTariff)?.displayName || 'Flexible Octopus', 'label')}
+                    {getTariffDisplayName(getComparisonTariffDisplayName(electricityComparisonTariff, 'electricity'), 'label')}
                   </Text>
                 </View>
               </View>
@@ -473,7 +493,7 @@ export default function SettingsScreen() {
                     <View style={styles.settingTextContainer}>
                       <Text style={styles.settingLabel}>Compare Against</Text>
                       <Text style={styles.settingValue} numberOfLines={1}>
-                        {getTariffDisplayName(GAS_COMPARISON_TARIFFS.find(t => t.code === gasComparisonTariff)?.displayName || 'Flexible Octopus', 'label')}
+                        {getTariffDisplayName(getComparisonTariffDisplayName(gasComparisonTariff, 'gas'), 'label')}
                       </Text>
                     </View>
                   </View>
