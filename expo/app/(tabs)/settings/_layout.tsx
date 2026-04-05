@@ -67,6 +67,24 @@ export default function SettingsLayout() {
           title: 'Notification Preferences',
         }}
       />
+      <Stack.Screen
+        name="theme"
+        options={{
+          title: 'Theme',
+        }}
+      />
+      <Stack.Screen
+        name="accessibility"
+        options={{
+          title: 'Accessibility',
+        }}
+      />
+      <Stack.Screen
+        name="gas-conversion"
+        options={{
+          title: 'Gas Conversion',
+        }}
+      />
     </Stack>
   );
 }
