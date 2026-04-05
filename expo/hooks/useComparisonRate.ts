@@ -5,33 +5,19 @@ import { fetchFlexibleRate, fetchComparisonTariffRates } from '@/services/energy
 
 const FLEXIBLE_TARIFF_CODE = 'VAR-22-11-01';
 
-function isValidComparisonTariff(code: string | null | undefined, tariffs: typeof ELECTRICITY_COMPARISON_TARIFFS): boolean {
-  if (!code) return false;
-  return tariffs.some(t => t.code === code);
-}
-
 export function useComparisonRate() {
   const {
     electricityComparisonTariff: storedElectricityTariff,
     gasComparisonTariff: storedGasTariff,
     selectedRegion,
+    availableElectricityProducts,
+    availableGasProducts,
   } = useConsumption();
   
   const safeSelectedRegion = selectedRegion ?? 'C';
   
-  const electricityComparisonTariff = useMemo(() => {
-    if (isValidComparisonTariff(storedElectricityTariff, ELECTRICITY_COMPARISON_TARIFFS)) {
-      return storedElectricityTariff;
-    }
-    return FLEXIBLE_TARIFF_CODE;
-  }, [storedElectricityTariff]);
-  
-  const gasComparisonTariff = useMemo(() => {
-    if (isValidComparisonTariff(storedGasTariff, GAS_COMPARISON_TARIFFS)) {
-      return storedGasTariff;
-    }
-    return FLEXIBLE_TARIFF_CODE;
-  }, [storedGasTariff]);
+  const electricityComparisonTariff = storedElectricityTariff || FLEXIBLE_TARIFF_CODE;
+  const gasComparisonTariff = storedGasTariff || FLEXIBLE_TARIFF_CODE;
   
   const isFlexibleElectricity = electricityComparisonTariff === FLEXIBLE_TARIFF_CODE;
   const isFlexibleGas = gasComparisonTariff === FLEXIBLE_TARIFF_CODE;
@@ -119,14 +105,20 @@ export function useComparisonRate() {
   });
   
   const comparisonElectricityTariffName = useMemo(() => {
-    const tariffInfo = ELECTRICITY_COMPARISON_TARIFFS.find(t => t.code === electricityComparisonTariff);
-    return tariffInfo?.displayName ?? 'Flexible Octopus';
-  }, [electricityComparisonTariff]);
+    const hardcoded = ELECTRICITY_COMPARISON_TARIFFS.find(t => t.code === electricityComparisonTariff);
+    if (hardcoded) return hardcoded.displayName;
+    const dynamic = availableElectricityProducts.find(p => p.code === electricityComparisonTariff);
+    if (dynamic) return dynamic.displayName;
+    return 'Flexible Octopus';
+  }, [electricityComparisonTariff, availableElectricityProducts]);
   
   const comparisonGasTariffName = useMemo(() => {
-    const tariffInfo = GAS_COMPARISON_TARIFFS.find(t => t.code === gasComparisonTariff);
-    return tariffInfo?.displayName ?? 'Flexible Octopus';
-  }, [gasComparisonTariff]);
+    const hardcoded = GAS_COMPARISON_TARIFFS.find(t => t.code === gasComparisonTariff);
+    if (hardcoded) return hardcoded.displayName;
+    const dynamic = availableGasProducts.find(p => p.code === gasComparisonTariff);
+    if (dynamic) return dynamic.displayName;
+    return 'Flexible Octopus';
+  }, [gasComparisonTariff, availableGasProducts]);
   
   const comparisonElectricityRate = isFlexibleElectricity 
     ? flexibleElectricityQuery.data 
