@@ -49,11 +49,7 @@ export function GridStatusCard({ colors, isDark }: GridStatusCardProps) {
     }).start();
   }, [expanded, rotateAnim]);
 
-  if (isLoading || !gridStatus) {
-    return null;
-  }
-
-  const intensityColor = INTENSITY_COLORS[gridStatus.intensityIndex] || INTENSITY_COLORS['moderate'];
+  const intensityColor = gridStatus ? (INTENSITY_COLORS[gridStatus.intensityIndex] || INTENSITY_COLORS['moderate']) : INTENSITY_COLORS['moderate'];
 
   const toggleExpanded = () => {
     setExpanded(!expanded);
@@ -92,6 +88,7 @@ export function GridStatusCard({ colors, isDark }: GridStatusCardProps) {
   };
 
   const getDetailedMixForDisplay = () => {
+    if (!gridStatus) return [];
     if (!gridStatus.detailedMix) {
       return gridStatus.generationMix.map(item => ({
         fuel: item.fuel,
@@ -288,6 +285,10 @@ export function GridStatusCard({ colors, isDark }: GridStatusCardProps) {
       color: intensityColor.bg,
     },
   }), [colors, isDark, intensityColor]);
+
+  if (isLoading || !gridStatus) {
+    return null;
+  }
 
   return (
     <View style={styles.container}>
