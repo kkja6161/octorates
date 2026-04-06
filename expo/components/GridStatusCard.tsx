@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable, Animated } from 'react-native';
 import { Leaf, Factory, UtilityPole, ChevronDown, ChevronUp } from 'lucide-react-native';
 import { useQuery } from '@tanstack/react-query';
@@ -141,7 +141,7 @@ export function GridStatusCard({ colors, isDark }: GridStatusCardProps) {
 
   const sortedMix = getDetailedMixForDisplay();
 
-  const styles = StyleSheet.create({
+  const styles = useMemo(() => StyleSheet.create({
     container: {
       backgroundColor: colors.surface,
       borderRadius: 12,
@@ -287,7 +287,7 @@ export function GridStatusCard({ colors, isDark }: GridStatusCardProps) {
     co2Value: {
       color: intensityColor.bg,
     },
-  });
+  }), [colors, isDark, intensityColor]);
 
   return (
     <View style={styles.container}>

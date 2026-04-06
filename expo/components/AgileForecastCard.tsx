@@ -84,7 +84,7 @@ export const AgileForecastCard = React.memo(function AgileForecastCard({
   useEffect(() => {
     if (rawForecastRates && rawForecastRates.length > 0 && priceAlertSettings?.enabled) {
       console.log('[AgileForecastCard] Scheduling price alerts with', rawForecastRates.length, 'forecast rates');
-      schedulePriceAlerts(rawForecastRates);
+      void schedulePriceAlerts(rawForecastRates);
     }
   }, [rawForecastRates, priceAlertSettings?.enabled, schedulePriceAlerts]);
 
@@ -183,7 +183,7 @@ export const AgileForecastCard = React.memo(function AgileForecastCard({
 
   const formatPrice = (price: number) => `${price.toFixed(1)}p`;
 
-  const styles = StyleSheet.create({
+  const styles = useMemo(() => StyleSheet.create({
     container: {
       backgroundColor: colors.surface,
       borderRadius: 16,
@@ -265,7 +265,7 @@ export const AgileForecastCard = React.memo(function AgileForecastCard({
       fontSize: 16,
       fontWeight: '700' as const,
     },
-  });
+  }), [colors, isDark]);
 
   if (isLoading) {
     return (
@@ -373,7 +373,7 @@ export const AgileForecastCard = React.memo(function AgileForecastCard({
             />
           ))}
 
-          {days.map((day, i) => {
+          {days.map((day) => {
             const dayRates = forecastRates.filter(r => r.date === day.date);
             if (dayRates.length === 0) return null;
             const midIndex = Math.floor(dayRates.length / 2);

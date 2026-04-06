@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -60,29 +60,29 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const [expandedFuelType, setExpandedFuelType] = useState<'electricity' | 'gas' | null>('electricity');
   
-  const handleFuelTypePress = (type: 'electricity' | 'gas') => {
+  const handleFuelTypePress = useCallback((type: 'electricity' | 'gas') => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setExpandedFuelType(expandedFuelType === type ? null : type);
-  };
+    setExpandedFuelType(prev => prev === type ? null : type);
+  }, []);
 
-  const refetchAll = () => {
-    refetchElectricity();
-    refetchGas();
-  };
+  const refetchAll = useCallback(() => {
+    void refetchElectricity();
+    void refetchGas();
+  }, [refetchElectricity, refetchGas]);
 
-  const getRateColor = (price: number, type: 'electricity' | 'gas') => {
+  const getRateColor = useCallback((price: number, type: 'electricity' | 'gas') => {
     const thresholds = type === 'electricity' ? electricityThresholds : gasThresholds;
     const level = getRateThresholdLevel(price, thresholds);
     return getThresholdColor(level, isDark);
-  };
+  }, [electricityThresholds, gasThresholds, isDark]);
 
-  const formatPrice = (price: number) => {
+  const formatPrice = useCallback((price: number) => {
     return `${price.toFixed(1)}p`;
-  };
+  }, []);
 
-  const isAgileTariff = (productCode: string) => {
+  const isAgileTariff = useCallback((productCode: string) => {
     return productCode && productCode.toUpperCase().includes('AGILE');
-  };
+  }, []);
 
   const isAgile = selectedElectricityTariff && isAgileTariff(selectedElectricityTariff);
 
@@ -126,25 +126,26 @@ export default function HomeScreen() {
   }, [expandedFuelType, tomorrowElectricityRates, tomorrowGasRates]);
 
   const cardBorderWidth = isHighContrast ? 2 : 0;
-  const baseSpacing = scaleSpacing(16);
+  const baseSpacing = scaleSpacing(12);
+  const cardGap = scaleSpacing(8);
   const fontWeightNormal = isBoldText ? '600' as const : '500' as const;
   const fontWeightBold = isBoldText ? '800' as const : '700' as const;
 
-  const styles = StyleSheet.create({
+  const styles = useMemo(() => StyleSheet.create({
     container: {
       flex: 1,
       backgroundColor: colors.background,
     },
     topSection: {
       paddingHorizontal: baseSpacing,
-      paddingBottom: baseSpacing,
+      paddingBottom: scaleSpacing(8),
       backgroundColor: colors.background,
     },
     headerRow: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      marginBottom: baseSpacing,
+      marginBottom: scaleSpacing(8),
     },
     dashboardTitle: {
       fontSize: scaleFontSize(32),
@@ -159,13 +160,13 @@ export default function HomeScreen() {
     },
     fuelTypesContainer: {
       flexDirection: 'row',
-      gap: scaleSpacing(12),
+      gap: scaleSpacing(8),
     },
     fuelTypeBox: {
       flex: 1,
       backgroundColor: colors.surface,
-      borderRadius: 16,
-      padding: baseSpacing,
+      borderRadius: 14,
+      padding: scaleSpacing(10),
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 2 },
       shadowOpacity: isDark ? 0.3 : 0.08,
@@ -181,12 +182,12 @@ export default function HomeScreen() {
     },
     fuelTypeContent: {
       alignItems: 'center',
-      gap: scaleSpacing(12),
+      gap: scaleSpacing(8),
     },
     fuelTypeIconContainer: {
-      width: scaleSpacing(56),
-      height: scaleSpacing(56),
-      borderRadius: scaleSpacing(28),
+      width: scaleSpacing(48),
+      height: scaleSpacing(48),
+      borderRadius: scaleSpacing(24),
       backgroundColor: colors.background,
       alignItems: 'center',
       justifyContent: 'center',
@@ -222,14 +223,16 @@ export default function HomeScreen() {
       flex: 1,
     },
     scrollContent: {
-      padding: scaleSpacing(20),
-      gap: baseSpacing,
+      paddingHorizontal: baseSpacing,
+      paddingTop: scaleSpacing(8),
+      paddingBottom: scaleSpacing(20),
+      gap: cardGap,
     },
     barGraphCard: {
       backgroundColor: colors.surface,
-      borderRadius: 16,
-      padding: baseSpacing,
-      gap: scaleSpacing(12),
+      borderRadius: 14,
+      padding: scaleSpacing(12),
+      gap: scaleSpacing(8),
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 2 },
       shadowOpacity: isDark ? 0.3 : 0.08,
@@ -239,10 +242,10 @@ export default function HomeScreen() {
       borderColor: colors.border,
     },
     sectionTitle: {
-      fontSize: scaleFontSize(20),
+      fontSize: scaleFontSize(18),
       fontWeight: fontWeightBold,
       color: colors.text.primary,
-      marginBottom: scaleSpacing(8),
+      marginBottom: scaleSpacing(4),
     },
     chartContainer: {
       paddingVertical: scaleSpacing(12),
@@ -272,15 +275,15 @@ export default function HomeScreen() {
     },
     gasDailyRatesContainer: {
       flexDirection: 'row',
-      gap: scaleSpacing(12),
+      gap: scaleSpacing(8),
     },
     dailyRateCard: {
       flex: 1,
       backgroundColor: colors.surface,
-      borderRadius: 16,
-      padding: scaleSpacing(20),
+      borderRadius: 14,
+      padding: scaleSpacing(14),
       alignItems: 'center',
-      gap: scaleSpacing(12),
+      gap: scaleSpacing(8),
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 2 },
       shadowOpacity: isDark ? 0.3 : 0.08,
@@ -307,9 +310,9 @@ export default function HomeScreen() {
     },
     flexibleComparisonCard: {
       backgroundColor: colors.surface,
-      borderRadius: 16,
-      padding: scaleSpacing(20),
-      gap: baseSpacing,
+      borderRadius: 14,
+      padding: scaleSpacing(14),
+      gap: scaleSpacing(10),
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 2 },
       shadowOpacity: isDark ? 0.3 : 0.08,
@@ -319,10 +322,10 @@ export default function HomeScreen() {
       borderColor: colors.border,
     },
     comparisonCardTitle: {
-      fontSize: scaleFontSize(18),
+      fontSize: scaleFontSize(16),
       fontWeight: fontWeightBold,
       color: colors.text.primary,
-      marginBottom: scaleSpacing(8),
+      marginBottom: scaleSpacing(4),
     },
     flexibleRateRow: {
       flexDirection: 'row',
@@ -342,8 +345,8 @@ export default function HomeScreen() {
     flexibleDifferenceRow: {
       borderTopWidth: isHighContrast ? 2 : 1,
       borderTopColor: colors.border,
-      paddingTop: baseSpacing,
-      marginTop: scaleSpacing(4),
+      paddingTop: scaleSpacing(10),
+      marginTop: scaleSpacing(2),
     },
     flexibleDifferenceLabel: {
       fontSize: scaleFontSize(14),
@@ -365,8 +368,8 @@ export default function HomeScreen() {
       color: colors.text.primary,
     },
     cheaperThanGasCard: {
-      marginTop: baseSpacing,
-      paddingTop: baseSpacing,
+      marginTop: scaleSpacing(8),
+      paddingTop: scaleSpacing(8),
       borderTopWidth: isHighContrast ? 2 : 1,
     },
     cheaperThanGasTitle: {
@@ -398,7 +401,7 @@ export default function HomeScreen() {
       color: colors.text.secondary,
       textAlign: 'center' as const,
     },
-  });
+  }), [colors, isDark, baseSpacing, cardGap, cardBorderWidth, fontWeightNormal, fontWeightBold, isHighContrast, scaleFontSize, scaleSpacing]);
 
   return (
     <>
@@ -417,7 +420,7 @@ export default function HomeScreen() {
           <GridStatusCard colors={colors} isDark={isDark} />
           {showNetFlux && selectedElectricityTariff && isAgileTariff(selectedElectricityTariff) && (
             <>
-              <View style={{ height: 8 }} />
+              <View style={{ height: 6 }} />
               <NetFluxTicker
                 importRate={currentElectricityRate?.price || null}
                 exportRate={null}
@@ -428,7 +431,7 @@ export default function HomeScreen() {
               />
             </>
           )}
-          <View style={{ height: 12 }} />
+          <View style={{ height: 8 }} />
           <View style={styles.fuelTypesContainer}>
             <Pressable
               accessibilityRole="button"

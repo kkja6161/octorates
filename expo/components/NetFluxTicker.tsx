@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -33,7 +33,7 @@ export function NetFluxTicker({
   currentGeneration,
   colors,
   isDark,
-  onPress,
+  onPress: _onPress,
 }: NetFluxTickerProps) {
   const [netFlux, setNetFlux] = useState<number | null>(null);
   const [isEarning, setIsEarning] = useState(false);
@@ -109,7 +109,7 @@ export function NetFluxTicker({
     setExpanded(!expanded);
   };
 
-  const styles = StyleSheet.create({
+  const styles = useMemo(() => StyleSheet.create({
     container: {
       backgroundColor: colors.surface,
       borderRadius: 12,
@@ -256,7 +256,7 @@ export function NetFluxTicker({
       fontWeight: '600' as const,
       color: colors.primary,
     },
-  });
+  }), [colors, isDark, isEarning, fluxColor]);
 
   const loadKw = (Number(currentLoad) || 0) / 1000;
 
