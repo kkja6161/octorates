@@ -2048,6 +2048,77 @@ export async function fetchAllBrandProducts(): Promise<HistoricalProduct[]> {
   }
 }
 
+export async function fetchCurrentlyAvailableProducts(): Promise<HistoricalProduct[]> {
+  console.log(`[Energy API] ========== FETCH CURRENTLY AVAILABLE PRODUCTS ==========`);
+  
+  const now = new Date().toISOString();
+  const allProducts: Product[] = [];
+  let nextUrl: string | null = `${OCTOPUS_API_BASE}/v1/products/?brand=OCTOPUS_ENERGY&available_at=${now}`;
+  
+  try {
+    let pageCount = 0;
+    while (nextUrl) {
+      pageCount++;
+      console.log(`[Energy API] Fetching current products page ${pageCount}...`);
+      
+      const response = await fetch(nextUrl);
+      
+      if (!response.ok) {
+        console.error('[Energy API] Failed to fetch current products:', response.status);
+        break;
+      }
+      
+      const data: ProductsResponse = await response.json();
+      console.log(`[Energy API] Current products page ${pageCount}: ${data.results.length} products`);
+      
+      allProducts.push(...data.results);
+      nextUrl = data.next;
+    }
+    
+    console.log(`[Energy API] Total current products fetched: ${allProducts.length}`);
+    
+    const processedProducts: HistoricalProduct[] = allProducts
+      .filter(product => {
+        if (product.is_business) return false;
+        const upperCode = product.code.toUpperCase();
+        if (upperCode.includes('EXPORT') || upperCode.includes('OUTGOING')) return false;
+        return true;
+      })
+      .map(product => {
+        const upperCode = product.code.toUpperCase();
+        const isTracker = upperCode.includes('SILVER') || upperCode.includes('TRACKER') || product.is_tracker;
+        const isAgile = upperCode.includes('AGILE');
+        
+        const hasElectricity = determineHasElectricity(product);
+        const hasGas = determineHasGas(product);
+        
+        return {
+          code: product.code,
+          displayName: product.display_name || product.full_name,
+          description: product.description || '',
+          availableFrom: product.available_from ? new Date(product.available_from) : null,
+          availableTo: product.available_to ? new Date(product.available_to) : null,
+          isVariable: product.is_variable || isAgile || isTracker,
+          isTracker,
+          isGreen: product.is_green,
+          hasElectricity,
+          hasGas,
+        };
+      })
+      .sort((a, b) => {
+        const dateA = a.availableFrom?.getTime() ?? 0;
+        const dateB = b.availableFrom?.getTime() ?? 0;
+        return dateB - dateA;
+      });
+    
+    console.log(`[Energy API] Processed current products: ${processedProducts.length} (elec: ${processedProducts.filter(p => p.hasElectricity).length}, gas: ${processedProducts.filter(p => p.hasGas).length})`);
+    return processedProducts;
+  } catch (error) {
+    console.error('[Energy API] Error fetching current products:', error);
+    return [];
+  }
+}
+
 export async function fetchAllAvailableProducts(movedInDate: Date): Promise<HistoricalProduct[]> {
   console.log(`[Energy API] ========== FETCH ALL AVAILABLE PRODUCTS ==========`);
   console.log(`[Energy API] User moved in: ${movedInDate.toISOString()}`);

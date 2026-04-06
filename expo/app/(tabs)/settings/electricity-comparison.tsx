@@ -302,21 +302,13 @@ export default function ElectricityComparisonScreen() {
     electricityComparisonTariff,
     setElectricityComparisonTariff,
     selectedRegion,
-    availableElectricityProducts,
-    isLoadingProducts,
+    currentElectricityProducts,
+    isLoadingCurrentProducts,
   } = useConsumption();
 
-  const currentProducts = useMemo(() => {
-    const now = new Date();
-    return availableElectricityProducts.filter(p => {
-      if (p.availableTo && p.availableTo < now) return false;
-      return true;
-    });
-  }, [availableElectricityProducts]);
-
   const availableProductGroups = useMemo(() => {
-    return groupProductsByCategory(currentProducts);
-  }, [currentProducts]);
+    return groupProductsByCategory(currentElectricityProducts);
+  }, [currentElectricityProducts]);
 
   const handleSelectTariff = (code: string) => {
     setElectricityComparisonTariff(code);
@@ -330,7 +322,7 @@ export default function ElectricityComparisonScreen() {
       </Text>
       
       <ScrollView style={styles.listContainer} showsVerticalScrollIndicator={false}>
-        {isLoadingProducts && (
+        {isLoadingCurrentProducts && (
           <View style={styles.loadingContainerCentered}>
             <ActivityIndicator size="small" color={Colors.primary} />
             <Text style={styles.loadingText}>Loading available tariffs...</Text>
@@ -357,7 +349,7 @@ export default function ElectricityComparisonScreen() {
           </View>
         )}
         
-        {!isLoadingProducts && availableProductGroups.length === 0 && (
+        {!isLoadingCurrentProducts && availableProductGroups.length === 0 && (
           <View style={styles.emptyState}>
             <Text style={styles.emptyStateText}>
               No current tariffs found. Connect your Octopus account to load available tariffs.

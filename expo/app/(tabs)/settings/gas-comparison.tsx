@@ -278,21 +278,13 @@ export default function GasComparisonScreen() {
     gasComparisonTariff,
     setGasComparisonTariff,
     selectedRegion,
-    availableGasProducts,
-    isLoadingProducts,
+    currentGasProducts,
+    isLoadingCurrentProducts,
   } = useConsumption();
 
-  const currentProducts = useMemo(() => {
-    const now = new Date();
-    return availableGasProducts.filter(p => {
-      if (p.availableTo && p.availableTo < now) return false;
-      return true;
-    });
-  }, [availableGasProducts]);
-
   const availableProductGroups = useMemo(() => {
-    return groupProductsByCategory(currentProducts);
-  }, [currentProducts]);
+    return groupProductsByCategory(currentGasProducts);
+  }, [currentGasProducts]);
 
   const handleSelectTariff = (code: string) => {
     setGasComparisonTariff(code);
@@ -306,7 +298,7 @@ export default function GasComparisonScreen() {
       </Text>
       
       <ScrollView style={styles.listContainer} showsVerticalScrollIndicator={false}>
-        {isLoadingProducts && (
+        {isLoadingCurrentProducts && (
           <View style={styles.loadingContainerCentered}>
             <ActivityIndicator size="small" color={Colors.gasColor} />
             <Text style={styles.loadingText}>Loading available tariffs...</Text>
@@ -333,7 +325,7 @@ export default function GasComparisonScreen() {
           </View>
         )}
         
-        {!isLoadingProducts && availableProductGroups.length === 0 && (
+        {!isLoadingCurrentProducts && availableProductGroups.length === 0 && (
           <View style={styles.emptyState}>
             <Text style={styles.emptyStateText}>
               No current gas tariffs found. Connect your Octopus account to load available tariffs.

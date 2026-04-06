@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useMemo, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { fetchConsumption, fetchEnergyRates, processRates, fetchFlexibleRate, fetchComparisonTariffRates, fetchGasTrackerRates, fetchStandingCharge, fetchAllStandingCharges, findStandingChargeForDate, fetchAccountData, processAccountData, fetchMeterDeviceId, fetchSmartMeterTelemetry, MeterDeviceInfo, SmartMeterTelemetryEntry, fetchAllAvailableProducts, fetchAllBrandProducts } from '@/services/energyApi';
+import { fetchConsumption, fetchEnergyRates, processRates, fetchFlexibleRate, fetchComparisonTariffRates, fetchGasTrackerRates, fetchStandingCharge, fetchAllStandingCharges, findStandingChargeForDate, fetchAccountData, processAccountData, fetchMeterDeviceId, fetchSmartMeterTelemetry, MeterDeviceInfo, SmartMeterTelemetryEntry, fetchAllAvailableProducts, fetchAllBrandProducts, fetchCurrentlyAvailableProducts } from '@/services/energyApi';
 import { DailyConsumption, ConsumptionEntry, ProcessedRate, ConsumptionEntryWithRate, ProcessedAccountData, ProcessedTariffAgreement, ComparisonTariffOption, HistoricalProduct, PeriodTariffOverride, ComparisonAvailability, DateRangedStandingCharge } from '@/types/energy';
 import { DEFAULT_GSP_REGION, DEFAULT_PRODUCT_CODE, GAS_TRACKER_PRODUCT } from '@/constants/octopus';
 
@@ -108,6 +108,7 @@ export const [ConsumptionProvider, useConsumption] = createContextHook(() => {
   const [liveDemand, setLiveDemand] = useState<number | null>(null);
   const [liveDemandUpdatedAt, setLiveDemandUpdatedAt] = useState<Date | null>(null);
   const [availableProducts, setAvailableProducts] = useState<HistoricalProduct[]>([]);
+  const [currentProducts, setCurrentProducts] = useState<HistoricalProduct[]>([]);
   const [periodTariffOverrides, setPeriodTariffOverridesState] = useState<PeriodTariffOverride[]>([]);
 
   const selectedRegion = accountData?.region || DEFAULT_GSP_REGION;
@@ -552,6 +553,23 @@ export const [ConsumptionProvider, useConsumption] = createContextHook(() => {
     },
     staleTime: 12 * 60 * 60 * 1000,
     gcTime: 24 * 60 * 60 * 1000,
+  });
+
+  const currentProductsQuery = useQuery({
+    queryKey: ['current-products'],
+    queryFn: async () => {
+      console.log('[ConsumptionProvider] Fetching currently available products...');
+      const products = await fetchCurrentlyAvailableProducts();
+      if (products.length > 0) {
+        const elecCount = products.filter(p => p.hasElectricity).length;
+        const gasCount = products.filter(p => p.hasGas).length;
+        console.log(`[ConsumptionProvider] Current products: ${products.length} (elec: ${elecCount}, gas: ${gasCount})`);
+        setCurrentProducts(products);
+      }
+      return products;
+    },
+    staleTime: 6 * 60 * 60 * 1000,
+    gcTime: 12 * 60 * 60 * 1000,
   });
 
   const smartMeterTelemetryQuery = useQuery({
@@ -1568,7 +1586,10 @@ export const [ConsumptionProvider, useConsumption] = createContextHook(() => {
     availableProducts,
     availableElectricityProducts: availableProducts.filter(p => p.hasElectricity),
     availableGasProducts: availableProducts.filter(p => p.hasGas),
+    currentElectricityProducts: currentProducts.filter(p => p.hasElectricity),
+    currentGasProducts: currentProducts.filter(p => p.hasGas),
     isLoadingProducts: availableProductsQuery.isLoading,
+    isLoadingCurrentProducts: currentProductsQuery.isLoading,
     lastElectricityBillDate,
     lastGasBillDate,
     sameBillDates,

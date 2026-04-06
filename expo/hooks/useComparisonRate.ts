@@ -12,6 +12,8 @@ export function useComparisonRate() {
     selectedRegion,
     availableElectricityProducts,
     availableGasProducts,
+    currentElectricityProducts,
+    currentGasProducts,
   } = useConsumption();
   
   const safeSelectedRegion = selectedRegion ?? 'C';
@@ -107,18 +109,22 @@ export function useComparisonRate() {
   const comparisonElectricityTariffName = useMemo(() => {
     const hardcoded = ELECTRICITY_COMPARISON_TARIFFS.find(t => t.code === electricityComparisonTariff);
     if (hardcoded) return hardcoded.displayName;
+    const current = currentElectricityProducts.find(p => p.code === electricityComparisonTariff);
+    if (current) return current.displayName;
     const dynamic = availableElectricityProducts.find(p => p.code === electricityComparisonTariff);
     if (dynamic) return dynamic.displayName;
     return 'Flexible Octopus';
-  }, [electricityComparisonTariff, availableElectricityProducts]);
+  }, [electricityComparisonTariff, currentElectricityProducts, availableElectricityProducts]);
   
   const comparisonGasTariffName = useMemo(() => {
     const hardcoded = GAS_COMPARISON_TARIFFS.find(t => t.code === gasComparisonTariff);
     if (hardcoded) return hardcoded.displayName;
+    const current = currentGasProducts.find(p => p.code === gasComparisonTariff);
+    if (current) return current.displayName;
     const dynamic = availableGasProducts.find(p => p.code === gasComparisonTariff);
     if (dynamic) return dynamic.displayName;
     return 'Flexible Octopus';
-  }, [gasComparisonTariff, availableGasProducts]);
+  }, [gasComparisonTariff, currentGasProducts, availableGasProducts]);
   
   const comparisonElectricityRate = isFlexibleElectricity 
     ? flexibleElectricityQuery.data 
