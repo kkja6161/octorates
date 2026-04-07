@@ -692,7 +692,7 @@ export default function SettingsScreen() {
 
             <View style={styles.versionCard}>
               <Text style={styles.versionLabel}>Version</Text>
-              <Text style={styles.versionValue}>1.72</Text>
+              <Text style={styles.versionValue}>1.73</Text>
             </View>
           </View>
 
