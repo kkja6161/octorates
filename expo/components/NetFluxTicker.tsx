@@ -99,10 +99,6 @@ export function NetFluxTicker({
   const hasGeneration = currentGeneration !== null && currentGeneration > 0;
   const hasRealTimeData = currentLoad !== null;
 
-  if (importRate === null) {
-    return null;
-  }
-
   const fluxColor = isEarning ? colors.success : colors.error;
 
   const toggleExpanded = () => {
@@ -257,6 +253,10 @@ export function NetFluxTicker({
       color: colors.primary,
     },
   }), [colors, isDark, isEarning, fluxColor]);
+
+  if (importRate === null) {
+    return null;
+  }
 
   const loadKw = (Number(currentLoad) || 0) / 1000;
 
