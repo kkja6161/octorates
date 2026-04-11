@@ -306,6 +306,8 @@ export default function ElectricityComparisonScreen() {
     isLoadingCurrentProducts,
   } = useConsumption();
 
+  console.log('[ElectricityComparison] Rendering with', currentElectricityProducts.length, 'current products, selected:', electricityComparisonTariff);
+
   const availableProductGroups = useMemo(() => {
     return groupProductsByCategory(currentElectricityProducts);
   }, [currentElectricityProducts]);

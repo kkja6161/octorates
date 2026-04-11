@@ -282,6 +282,8 @@ export default function GasComparisonScreen() {
     isLoadingCurrentProducts,
   } = useConsumption();
 
+  console.log('[GasComparison] Rendering with', currentGasProducts.length, 'current products, selected:', gasComparisonTariff);
+
   const availableProductGroups = useMemo(() => {
     return groupProductsByCategory(currentGasProducts);
   }, [currentGasProducts]);
