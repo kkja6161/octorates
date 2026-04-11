@@ -10,87 +10,77 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { Check, ChevronDown, ChevronUp, Clock, Flame, Calendar } from 'lucide-react-native';
+import { Check, ChevronDown, ChevronUp, Clock, Flame } from 'lucide-react-native';
 
-import { useConsumption } from '@/providers/ConsumptionProvider';
+import { useConsumption, GAS_COMPARISON_TARIFFS } from '@/providers/ConsumptionProvider';
 import { fetchComparisonTariffRates, fetchStandingCharge } from '@/services/energyApi';
 import Colors from '@/constants/colors';
-import { ProcessedRate, HistoricalProduct } from '@/types/energy';
+import { ProcessedRate, ComparisonTariffOption } from '@/types/energy';
 
 type SimplifiedCategory = 'Tracker' | 'Flexible' | 'Fixed' | 'Other';
 
-interface AvailableProductGroup {
+interface TariffGroup {
   category: SimplifiedCategory;
-  products: HistoricalProduct[];
+  tariffs: ComparisonTariffOption[];
 }
 
 function getSimplifiedCategory(code: string, displayName: string): SimplifiedCategory {
   const upperCode = code.toUpperCase();
   const upperName = displayName.toUpperCase();
-  
+
   if (upperCode.includes('SILVER') || upperCode.includes('TRACKER') || upperName.includes('TRACKER')) return 'Tracker';
   if (upperCode.includes('FIX') || upperName.includes('FIXED')) return 'Fixed';
   if (upperCode.includes('VAR') || upperCode.includes('FLEX') || upperName.includes('FLEXIBLE')) return 'Flexible';
-  
+
   return 'Other';
 }
 
-function groupProductsByCategory(products: HistoricalProduct[]): AvailableProductGroup[] {
+function groupTariffsByCategory(tariffs: ComparisonTariffOption[]): TariffGroup[] {
   const categoryOrder: SimplifiedCategory[] = ['Tracker', 'Flexible', 'Fixed', 'Other'];
-  const groups = new Map<SimplifiedCategory, HistoricalProduct[]>();
-  
+  const groups = new Map<SimplifiedCategory, ComparisonTariffOption[]>();
+
   categoryOrder.forEach(cat => groups.set(cat, []));
-  
-  products.forEach(product => {
-    const category = getSimplifiedCategory(product.code, product.displayName);
-    groups.get(category)!.push(product);
+
+  tariffs.forEach(tariff => {
+    const category = getSimplifiedCategory(tariff.code, tariff.displayName);
+    groups.get(category)!.push(tariff);
   });
-  
-  const result: AvailableProductGroup[] = [];
+
+  const result: TariffGroup[] = [];
   categoryOrder.forEach(cat => {
-    const catProducts = groups.get(cat)!;
-    if (catProducts.length > 0) {
-      catProducts.sort((a, b) => {
-        const dateA = a.availableFrom?.getTime() ?? 0;
-        const dateB = b.availableFrom?.getTime() ?? 0;
-        return dateB - dateA;
-      });
-      result.push({ category: cat, products: catProducts });
+    const catTariffs = groups.get(cat)!;
+    if (catTariffs.length > 0) {
+      result.push({ category: cat, tariffs: catTariffs });
     }
   });
-  
+
   return result;
 }
 
-function formatDate(date: Date | null): string {
-  if (!date) return 'Present';
-  return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-}
-
-function AvailableProductItem({
-  product,
+function TariffItem({
+  tariff,
   isSelected,
   onSelect,
   region,
 }: {
-  product: HistoricalProduct;
+  tariff: ComparisonTariffOption;
   isSelected: boolean;
   onSelect: () => void;
   region: string;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const isTracker = product.isTracker;
+  const isTracker = tariff.code.toUpperCase().includes('SILVER') || tariff.code.toUpperCase().includes('TRACKER');
 
   const ratesQuery = useQuery({
-    queryKey: ['gas-comparison-tariff-rates', product.code, region],
-    queryFn: () => fetchComparisonTariffRates(region, product.code, 'gas'),
+    queryKey: ['gas-comparison-tariff-rates', tariff.code, region],
+    queryFn: () => fetchComparisonTariffRates(region, tariff.code, 'gas'),
     enabled: expanded,
     staleTime: 60 * 60 * 1000,
   });
 
   const standingChargeQuery = useQuery({
-    queryKey: ['gas-comparison-standing-charge', product.code, region],
-    queryFn: () => fetchStandingCharge(product.code, region, 'gas'),
+    queryKey: ['gas-comparison-standing-charge', tariff.code, region],
+    queryFn: () => fetchStandingCharge(tariff.code, region, 'gas'),
     enabled: expanded,
     staleTime: 60 * 60 * 1000,
   });
@@ -99,17 +89,17 @@ function AvailableProductItem({
 
   const getUniqueRatePeriods = (rates: ProcessedRate[]) => {
     const periodMap = new Map<string, { rate: number; validFrom: string; validTo: string }>();
-    
+
     rates.forEach(rate => {
       const fromTime = rate.validFrom.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
       const toTime = rate.validTo.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
       const key = `${fromTime}-${toTime}-${rate.price.toFixed(2)}`;
-      
+
       if (!periodMap.has(key)) {
         periodMap.set(key, { rate: rate.price, validFrom: fromTime, validTo: toTime });
       }
     });
-    
+
     return Array.from(periodMap.values()).sort((a, b) => {
       const aHour = parseInt(a.validFrom.split(':')[0], 10);
       const bHour = parseInt(b.validFrom.split(':')[0], 10);
@@ -117,39 +107,22 @@ function AvailableProductItem({
     });
   };
 
-  const availabilityText = useMemo(() => {
-    const from = product.availableFrom ? formatDate(product.availableFrom) : null;
-    if (!from) return null;
-    return `Available from ${from}`;
-  }, [product.availableFrom]);
-
   return (
     <View style={[styles.tariffItem, isSelected && styles.listItemSelected]}>
       <Pressable style={styles.tariffItemHeader} onPress={onSelect}>
         <View style={styles.tariffItemLeft}>
           <Text style={[styles.tariffItemTitle, isSelected && styles.listItemTextSelected]}>
-            {product.displayName}
+            {tariff.displayName}
           </Text>
-          {product.description ? (
+          {tariff.description ? (
             <Text style={styles.tariffItemDescription} numberOfLines={2}>
-              {product.description}
+              {tariff.description}
             </Text>
           ) : null}
-          {availabilityText && (
-            <View style={styles.tariffDateRow}>
-              <Calendar size={12} color={Colors.text.secondary} />
-              <Text style={styles.tariffDateText}>{availabilityText}</Text>
-            </View>
-          )}
           <View style={styles.tariffBadges}>
-            {product.isVariable && (
+            {isTracker && (
               <View style={styles.variableBadge}>
-                <Text style={styles.badgeText}>{isTracker ? 'Daily' : 'Variable'}</Text>
-              </View>
-            )}
-            {product.isGreen && (
-              <View style={[styles.activeBadge, { backgroundColor: '#10b981' }]}>
-                <Text style={styles.badgeText}>Green</Text>
+                <Text style={styles.badgeText}>Daily</Text>
               </View>
             )}
           </View>
@@ -173,7 +146,7 @@ function AvailableProductItem({
           </TouchableOpacity>
         </View>
       </Pressable>
-      
+
       {expanded && (
         <View style={styles.ratesContainer}>
           {ratesQuery.isLoading ? (
@@ -195,7 +168,7 @@ function AvailableProductItem({
                   return r.validFrom >= today && r.validFrom < tomorrow;
                 });
                 const currentRate = todayRates.length > 0 ? todayRates[0] : displayRates[displayRates.length - 1];
-                
+
                 return (
                   <View style={styles.trackerRateRow}>
                     <Flame size={18} color={Colors.gasColor} />
@@ -216,7 +189,7 @@ function AvailableProductItem({
               {(() => {
                 const uniqueRates = getUniqueRatePeriods(displayRates);
                 const hasMultipleRates = uniqueRates.length > 1 && uniqueRates.length < 4;
-                
+
                 if (uniqueRates.length === 1) {
                   return (
                     <View style={styles.detailRow}>
@@ -228,7 +201,7 @@ function AvailableProductItem({
                     </View>
                   );
                 }
-                
+
                 if (hasMultipleRates) {
                   return (
                     <>
@@ -247,7 +220,7 @@ function AvailableProductItem({
                     </>
                   );
                 }
-                
+
                 return (
                   <View style={styles.detailRow}>
                     <View style={styles.detailLabel}>
@@ -282,13 +255,27 @@ export default function GasComparisonScreen() {
     isLoadingCurrentProducts,
   } = useConsumption();
 
-  console.log('[GasComparison] Rendering with', currentGasProducts.length, 'current products, selected:', gasComparisonTariff);
+  const allTariffs = useMemo(() => {
+    const hardcodedCodes = new Set(GAS_COMPARISON_TARIFFS.map(t => t.code));
 
-  const availableProductGroups = useMemo(() => {
-    return groupProductsByCategory(currentGasProducts);
+    const extraFromApi: ComparisonTariffOption[] = currentGasProducts
+      .filter(p => !hardcodedCodes.has(p.code))
+      .map(p => ({
+        code: p.code,
+        displayName: p.displayName,
+        description: p.description || '',
+        hasGas: true,
+      }));
+
+    return [...GAS_COMPARISON_TARIFFS, ...extraFromApi];
   }, [currentGasProducts]);
 
+  const tariffGroups = useMemo(() => {
+    return groupTariffsByCategory(allTariffs);
+  }, [allTariffs]);
+
   const handleSelectTariff = (code: string) => {
+    console.log('[GasComparison] Selected tariff:', code);
     setGasComparisonTariff(code);
     router.back();
   };
@@ -296,45 +283,32 @@ export default function GasComparisonScreen() {
   return (
     <View style={styles.container}>
       <Text style={styles.description}>
-        Select a currently available tariff to compare your gas costs against.
+        Select a tariff to compare your gas costs against.
       </Text>
-      
+
       <ScrollView style={styles.listContainer} showsVerticalScrollIndicator={false}>
+        {tariffGroups.map((group) => (
+          <View key={group.category} style={styles.groupContainer}>
+            <Text style={styles.groupTitle}>{group.category}</Text>
+            {group.tariffs.map((tariff) => (
+              <TariffItem
+                key={tariff.code}
+                tariff={tariff}
+                isSelected={gasComparisonTariff === tariff.code}
+                onSelect={() => handleSelectTariff(tariff.code)}
+                region={selectedRegion}
+              />
+            ))}
+          </View>
+        ))}
+
         {isLoadingCurrentProducts && (
           <View style={styles.loadingContainerCentered}>
             <ActivityIndicator size="small" color={Colors.gasColor} />
-            <Text style={styles.loadingText}>Loading available tariffs...</Text>
+            <Text style={styles.loadingText}>Loading additional tariffs...</Text>
           </View>
         )}
 
-        {availableProductGroups.length > 0 && (
-          <View style={styles.sectionContainer}>
-            <Text style={styles.sectionTitle}>Current Tariffs</Text>
-            {availableProductGroups.map((group) => (
-              <View key={group.category} style={styles.groupContainer}>
-                <Text style={styles.groupTitle}>{group.category}</Text>
-                {group.products.map((product) => (
-                  <AvailableProductItem
-                    key={product.code}
-                    product={product}
-                    isSelected={gasComparisonTariff === product.code}
-                    onSelect={() => handleSelectTariff(product.code)}
-                    region={selectedRegion}
-                  />
-                ))}
-              </View>
-            ))}
-          </View>
-        )}
-        
-        {!isLoadingCurrentProducts && availableProductGroups.length === 0 && (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyStateText}>
-              No current gas tariffs found. Connect your Octopus account to load available tariffs.
-            </Text>
-          </View>
-        )}
-        
         <View style={styles.bottomPadding} />
       </ScrollView>
     </View>
@@ -356,19 +330,6 @@ const styles = StyleSheet.create({
   },
   listContainer: {
     flex: 1,
-  },
-  sectionContainer: {
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    fontSize: 13,
-    fontWeight: '600' as const,
-    color: Colors.text.secondary,
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-    backgroundColor: Colors.background,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
   },
   groupContainer: {
     marginBottom: 4,
@@ -422,26 +383,11 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     marginTop: 2,
   },
-  tariffDateRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  tariffDateText: {
-    fontSize: 12,
-    color: Colors.text.secondary,
-  },
   tariffBadges: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 6,
     marginTop: 4,
-  },
-  activeBadge: {
-    backgroundColor: '#10b981',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
   },
   variableBadge: {
     backgroundColor: '#3b82f6',
@@ -574,16 +520,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700' as const,
     color: Colors.gasColor,
-  },
-  emptyState: {
-    padding: 32,
-    alignItems: 'center',
-  },
-  emptyStateText: {
-    fontSize: 14,
-    color: Colors.text.secondary,
-    textAlign: 'center' as const,
-    lineHeight: 20,
   },
   bottomPadding: {
     height: 40,

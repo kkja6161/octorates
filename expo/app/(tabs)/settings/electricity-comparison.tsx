@@ -10,24 +10,24 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { Check, ChevronDown, ChevronUp, Clock, Zap, Calendar } from 'lucide-react-native';
+import { Check, ChevronDown, ChevronUp, Clock, Zap } from 'lucide-react-native';
 
-import { useConsumption } from '@/providers/ConsumptionProvider';
+import { useConsumption, ELECTRICITY_COMPARISON_TARIFFS } from '@/providers/ConsumptionProvider';
 import { fetchComparisonTariffRates, fetchStandingCharge } from '@/services/energyApi';
 import Colors from '@/constants/colors';
-import { ProcessedRate, HistoricalProduct } from '@/types/energy';
+import { ProcessedRate, ComparisonTariffOption } from '@/types/energy';
 
 type SimplifiedCategory = 'Agile' | 'Flexible' | 'Tracker' | 'Fixed' | 'Go' | 'Cosy' | 'Intelligent' | 'Flux' | 'Other';
 
-interface AvailableProductGroup {
+interface TariffGroup {
   category: SimplifiedCategory;
-  products: HistoricalProduct[];
+  tariffs: ComparisonTariffOption[];
 }
 
 function getSimplifiedCategory(code: string, displayName: string): SimplifiedCategory {
   const upperCode = code.toUpperCase();
   const upperName = displayName.toUpperCase();
-  
+
   if (upperCode.includes('AGILE') || upperName.includes('AGILE')) return 'Agile';
   if (upperCode.includes('SILVER') || upperCode.includes('TRACKER') || upperName.includes('TRACKER')) return 'Tracker';
   if (upperCode.includes('INTELLI') || upperName.includes('INTELLIGENT')) return 'Intelligent';
@@ -36,67 +36,57 @@ function getSimplifiedCategory(code: string, displayName: string): SimplifiedCat
   if (upperCode.includes('COSY') || upperName.includes('COSY')) return 'Cosy';
   if (upperCode.includes('FIX') || upperName.includes('FIXED')) return 'Fixed';
   if (upperCode.includes('VAR') || upperCode.includes('FLEX') || upperName.includes('FLEXIBLE')) return 'Flexible';
-  
+
   return 'Other';
 }
 
-function groupProductsByCategory(products: HistoricalProduct[]): AvailableProductGroup[] {
+function groupTariffsByCategory(tariffs: ComparisonTariffOption[]): TariffGroup[] {
   const categoryOrder: SimplifiedCategory[] = ['Agile', 'Tracker', 'Flexible', 'Fixed', 'Go', 'Cosy', 'Intelligent', 'Flux', 'Other'];
-  const groups = new Map<SimplifiedCategory, HistoricalProduct[]>();
-  
+  const groups = new Map<SimplifiedCategory, ComparisonTariffOption[]>();
+
   categoryOrder.forEach(cat => groups.set(cat, []));
-  
-  products.forEach(product => {
-    const category = getSimplifiedCategory(product.code, product.displayName);
-    groups.get(category)!.push(product);
+
+  tariffs.forEach(tariff => {
+    const category = getSimplifiedCategory(tariff.code, tariff.displayName);
+    groups.get(category)!.push(tariff);
   });
-  
-  const result: AvailableProductGroup[] = [];
+
+  const result: TariffGroup[] = [];
   categoryOrder.forEach(cat => {
-    const catProducts = groups.get(cat)!;
-    if (catProducts.length > 0) {
-      catProducts.sort((a, b) => {
-        const dateA = a.availableFrom?.getTime() ?? 0;
-        const dateB = b.availableFrom?.getTime() ?? 0;
-        return dateB - dateA;
-      });
-      result.push({ category: cat, products: catProducts });
+    const catTariffs = groups.get(cat)!;
+    if (catTariffs.length > 0) {
+      result.push({ category: cat, tariffs: catTariffs });
     }
   });
-  
+
   return result;
 }
 
-function formatDate(date: Date | null): string {
-  if (!date) return 'Present';
-  return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-}
-
-function AvailableProductItem({
-  product,
+function TariffItem({
+  tariff,
   isSelected,
   onSelect,
   region,
 }: {
-  product: HistoricalProduct;
+  tariff: ComparisonTariffOption;
   isSelected: boolean;
   onSelect: () => void;
   region: string;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const isAgile = product.code.toUpperCase().includes('AGILE');
-  const isTracker = product.isTracker;
+  const isAgile = tariff.code.toUpperCase().includes('AGILE');
+  const isTracker = tariff.code.toUpperCase().includes('SILVER') || tariff.code.toUpperCase().includes('TRACKER');
 
   const ratesQuery = useQuery({
-    queryKey: ['comparison-tariff-rates', product.code, region],
-    queryFn: () => fetchComparisonTariffRates(region, product.code, 'electricity'),
+    queryKey: ['comparison-tariff-rates', tariff.code, region],
+    queryFn: () => fetchComparisonTariffRates(region, tariff.code, 'electricity'),
     enabled: expanded,
     staleTime: 60 * 60 * 1000,
   });
 
   const standingChargeQuery = useQuery({
-    queryKey: ['comparison-standing-charge', product.code, region],
-    queryFn: () => fetchStandingCharge(product.code, region, 'electricity'),
+    queryKey: ['comparison-standing-charge', tariff.code, region],
+    queryFn: () => fetchStandingCharge(tariff.code, region, 'electricity'),
     enabled: expanded,
     staleTime: 60 * 60 * 1000,
   });
@@ -105,17 +95,17 @@ function AvailableProductItem({
 
   const getUniqueRatePeriods = (rates: ProcessedRate[]) => {
     const periodMap = new Map<string, { rate: number; validFrom: string; validTo: string }>();
-    
+
     rates.forEach(rate => {
       const fromTime = rate.validFrom.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
       const toTime = rate.validTo.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
       const key = `${fromTime}-${toTime}-${rate.price.toFixed(2)}`;
-      
+
       if (!periodMap.has(key)) {
         periodMap.set(key, { rate: rate.price, validFrom: fromTime, validTo: toTime });
       }
     });
-    
+
     return Array.from(periodMap.values()).sort((a, b) => {
       const aHour = parseInt(a.validFrom.split(':')[0], 10);
       const bHour = parseInt(b.validFrom.split(':')[0], 10);
@@ -123,39 +113,22 @@ function AvailableProductItem({
     });
   };
 
-  const availabilityText = useMemo(() => {
-    const from = product.availableFrom ? formatDate(product.availableFrom) : null;
-    if (!from) return null;
-    return `Available from ${from}`;
-  }, [product.availableFrom]);
-
   return (
     <View style={[styles.tariffItem, isSelected && styles.listItemSelected]}>
       <Pressable style={styles.tariffItemHeader} onPress={onSelect}>
         <View style={styles.tariffItemLeft}>
           <Text style={[styles.tariffItemTitle, isSelected && styles.listItemTextSelected]}>
-            {product.displayName}
+            {tariff.displayName}
           </Text>
-          {product.description ? (
+          {tariff.description ? (
             <Text style={styles.tariffItemDescription} numberOfLines={2}>
-              {product.description}
+              {tariff.description}
             </Text>
           ) : null}
-          {availabilityText && (
-            <View style={styles.tariffDateRow}>
-              <Calendar size={12} color={Colors.text.secondary} />
-              <Text style={styles.tariffDateText}>{availabilityText}</Text>
-            </View>
-          )}
           <View style={styles.tariffBadges}>
-            {product.isVariable && (
+            {(isAgile || isTracker) && (
               <View style={styles.variableBadge}>
-                <Text style={styles.badgeText}>{isAgile ? 'Variable' : isTracker ? 'Daily' : 'Variable'}</Text>
-              </View>
-            )}
-            {product.isGreen && (
-              <View style={[styles.activeBadge, { backgroundColor: '#10b981' }]}>
-                <Text style={styles.badgeText}>Green</Text>
+                <Text style={styles.badgeText}>{isAgile ? 'Variable' : 'Daily'}</Text>
               </View>
             )}
           </View>
@@ -179,7 +152,7 @@ function AvailableProductItem({
           </TouchableOpacity>
         </View>
       </Pressable>
-      
+
       {expanded && (
         <View style={styles.ratesContainer}>
           {ratesQuery.isLoading ? (
@@ -203,10 +176,10 @@ function AvailableProductItem({
                 const sortedRates = [...todayRates].sort((a, b) => a.price - b.price);
                 const lowestRate = sortedRates[0];
                 const highestRate = sortedRates[sortedRates.length - 1];
-                const avgRate = todayRates.length > 0 
-                  ? todayRates.reduce((sum, r) => sum + r.price, 0) / todayRates.length 
+                const avgRate = todayRates.length > 0
+                  ? todayRates.reduce((sum, r) => sum + r.price, 0) / todayRates.length
                   : 0;
-                
+
                 return (
                   <View style={styles.agileStatsRow}>
                     <View style={styles.agileStat}>
@@ -240,7 +213,7 @@ function AvailableProductItem({
               {(() => {
                 const uniqueRates = getUniqueRatePeriods(displayRates);
                 const hasMultipleRates = uniqueRates.length > 1 && uniqueRates.length < 4;
-                
+
                 if (uniqueRates.length === 1) {
                   return (
                     <View style={styles.detailRow}>
@@ -252,7 +225,7 @@ function AvailableProductItem({
                     </View>
                   );
                 }
-                
+
                 if (hasMultipleRates) {
                   return (
                     <>
@@ -271,7 +244,7 @@ function AvailableProductItem({
                     </>
                   );
                 }
-                
+
                 return (
                   <View style={styles.detailRow}>
                     <View style={styles.detailLabel}>
@@ -306,13 +279,27 @@ export default function ElectricityComparisonScreen() {
     isLoadingCurrentProducts,
   } = useConsumption();
 
-  console.log('[ElectricityComparison] Rendering with', currentElectricityProducts.length, 'current products, selected:', electricityComparisonTariff);
+  const allTariffs = useMemo(() => {
+    const hardcodedCodes = new Set(ELECTRICITY_COMPARISON_TARIFFS.map(t => t.code));
 
-  const availableProductGroups = useMemo(() => {
-    return groupProductsByCategory(currentElectricityProducts);
+    const extraFromApi: ComparisonTariffOption[] = currentElectricityProducts
+      .filter(p => !hardcodedCodes.has(p.code))
+      .map(p => ({
+        code: p.code,
+        displayName: p.displayName,
+        description: p.description || '',
+        hasGas: p.hasGas,
+      }));
+
+    return [...ELECTRICITY_COMPARISON_TARIFFS, ...extraFromApi];
   }, [currentElectricityProducts]);
 
+  const tariffGroups = useMemo(() => {
+    return groupTariffsByCategory(allTariffs);
+  }, [allTariffs]);
+
   const handleSelectTariff = (code: string) => {
+    console.log('[ElectricityComparison] Selected tariff:', code);
     setElectricityComparisonTariff(code);
     router.back();
   };
@@ -320,45 +307,32 @@ export default function ElectricityComparisonScreen() {
   return (
     <View style={styles.container}>
       <Text style={styles.description}>
-        Select a currently available tariff to compare your electricity costs against.
+        Select a tariff to compare your electricity costs against.
       </Text>
-      
+
       <ScrollView style={styles.listContainer} showsVerticalScrollIndicator={false}>
+        {tariffGroups.map((group) => (
+          <View key={group.category} style={styles.groupContainer}>
+            <Text style={styles.groupTitle}>{group.category}</Text>
+            {group.tariffs.map((tariff) => (
+              <TariffItem
+                key={tariff.code}
+                tariff={tariff}
+                isSelected={electricityComparisonTariff === tariff.code}
+                onSelect={() => handleSelectTariff(tariff.code)}
+                region={selectedRegion}
+              />
+            ))}
+          </View>
+        ))}
+
         {isLoadingCurrentProducts && (
           <View style={styles.loadingContainerCentered}>
             <ActivityIndicator size="small" color={Colors.primary} />
-            <Text style={styles.loadingText}>Loading available tariffs...</Text>
+            <Text style={styles.loadingText}>Loading additional tariffs...</Text>
           </View>
         )}
 
-        {availableProductGroups.length > 0 && (
-          <View style={styles.sectionContainer}>
-            <Text style={styles.sectionTitle}>Current Tariffs</Text>
-            {availableProductGroups.map((group) => (
-              <View key={group.category} style={styles.groupContainer}>
-                <Text style={styles.groupTitle}>{group.category}</Text>
-                {group.products.map((product) => (
-                  <AvailableProductItem
-                    key={product.code}
-                    product={product}
-                    isSelected={electricityComparisonTariff === product.code}
-                    onSelect={() => handleSelectTariff(product.code)}
-                    region={selectedRegion}
-                  />
-                ))}
-              </View>
-            ))}
-          </View>
-        )}
-        
-        {!isLoadingCurrentProducts && availableProductGroups.length === 0 && (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyStateText}>
-              No current tariffs found. Connect your Octopus account to load available tariffs.
-            </Text>
-          </View>
-        )}
-        
         <View style={styles.bottomPadding} />
       </ScrollView>
     </View>
@@ -380,19 +354,6 @@ const styles = StyleSheet.create({
   },
   listContainer: {
     flex: 1,
-  },
-  sectionContainer: {
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    fontSize: 13,
-    fontWeight: '600' as const,
-    color: Colors.text.secondary,
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-    backgroundColor: Colors.background,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
   },
   groupContainer: {
     marginBottom: 4,
@@ -446,26 +407,11 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     marginTop: 2,
   },
-  tariffDateRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  tariffDateText: {
-    fontSize: 12,
-    color: Colors.text.secondary,
-  },
   tariffBadges: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 6,
     marginTop: 4,
-  },
-  activeBadge: {
-    backgroundColor: '#10b981',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
   },
   variableBadge: {
     backgroundColor: '#3b82f6',
@@ -610,16 +556,6 @@ const styles = StyleSheet.create({
   },
   highRate: {
     color: Colors.chart.veryHigh,
-  },
-  emptyState: {
-    padding: 32,
-    alignItems: 'center',
-  },
-  emptyStateText: {
-    fontSize: 14,
-    color: Colors.text.secondary,
-    textAlign: 'center' as const,
-    lineHeight: 20,
   },
   bottomPadding: {
     height: 40,
