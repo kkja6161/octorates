@@ -1,24 +1,53 @@
-//
-//  ContentView.swift
-//  OctopusEnergyTracker
-//
-//  Created by Rork on July 4, 2026.
-//
-
 import SwiftUI
 
-/// Placeholder shown until Rork replaces it with the real app UI.
-/// This view is intentionally minimal: it must never ship as a final screen.
+/// Root TabView — three tabs (Home, Usage, EV) + settings pushed from Home.
 struct ContentView: View {
-    var body: some View {
-        Text("App UI has not been generated yet")
-            .font(.headline)
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(.systemBackground))
-    }
-}
+    @Environment(SettingsStore.self) private var settings
+    @State private var appState: AppState?
+    @State private var usageVM: UsageViewModel?
+    @State private var evVM: EVViewModel?
+    @State private var selectedTab = 0
 
-#Preview {
-    ContentView()
+    var body: some View {
+        TabView(selection: $selectedTab) {
+            if let appState {
+                HomeView(appState: appState)
+                    .tabItem {
+                        Label("Home", systemImage: "house.fill")
+                    }
+                    .tag(0)
+
+                if let usageVM {
+                    UsageView(viewModel: usageVM, appState: appState)
+                        .tabItem {
+                            Label("Usage", systemImage: "chart.bar.fill")
+                        }
+                        .tag(1)
+                }
+
+                if let evVM {
+                    EVChargingView(viewModel: evVM, appState: appState)
+                        .tabItem {
+                            Label("EV", systemImage: "bolt.car.fill")
+                        }
+                        .tag(2)
+                }
+            } else {
+                // Placeholder while state initializes.
+                ProgressView()
+                    .tabItem { Label("Home", systemImage: "house.fill") }
+                    .tag(0)
+            }
+        }
+        .tint(AppTheme.primary)
+        .onAppear { setupState() }
+    }
+
+    private func setupState() {
+        guard appState == nil else { return }
+        let state = AppState(settings: settings)
+        appState = state
+        usageVM = UsageViewModel(settings: settings, appState: state)
+        evVM = EVViewModel(settings: settings, appState: state)
+    }
 }

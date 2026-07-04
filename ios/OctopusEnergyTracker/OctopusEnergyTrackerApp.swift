@@ -1,17 +1,15 @@
-//
-//  OctopusEnergyTrackerApp.swift
-//  OctopusEnergyTracker
-//
-//  Created by Rork on July 4, 2026.
-//
-
 import SwiftUI
 
 @main
 struct OctopusEnergyTrackerApp: App {
+    @State private var settingsStore = SettingsStore()
+
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environment(settingsStore)
+                .preferredColorScheme(settingsStore.colorSchemePreference)
+                .tint(AppTheme.primary)
         }
     }
 }
